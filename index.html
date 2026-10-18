@@ -2704,7 +2704,7 @@ let rng = SP.makeRng((Date.now() ^ (Math.random() * 1e9)) >>> 0);
 let busy = false, autoplay = false, holdTurbo = false, turboToggle = false;
 let pendingForce = null;
 let lastRound = null, roundNo = 0;
-const panelOpen = () => ['rules', 'betmenu'].some((id) => $(id).classList.contains('on'));
+const panelOpen = () => ['rules', 'betmenu', 'tpPanel'].some((id) => $(id) && $(id).classList.contains('on'));
 
 /* playOne(manual) -> true (played) | 'busy' (another round owns the reels) | 'funds' (balance below the bet).
    Only a MANUAL spin closes an open panel; autoplay / hold-turbo wait until the player closes it (fix round 2). */
@@ -3262,6 +3262,278 @@ function prewarm() {
 requestAnimationFrame(prewarm);
 hud(); idlePrompt();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fitPrompt(); });
+/* ======================================================================================= TEST LAYOUT panel
+   testpanel.js: build.mjs drops this file into the game script's own scope at /*__TESTPANEL__*\/ (template.html, just
+   before the script's closing line), so it uses the game's helpers directly: SYMS, spriteURL, setSrc, playOne,
+   pendingForce, qaMark, toast. It touches no game rule: a test spin is an ordinary round whose BASE grid is forced
+   through the engine's own force.grid (the same hook as SP_DEBUG.forceGrid), so the expanding wild, the copy respin,
+   line wins, splashes and the feature all play out exactly as they would naturally. The free spins and the copy's
+   two respun reels stay random (the engine has no force for them).
+
+   A small TEST button sits on the cabinet in both views. It opens a panel over the reels:
+     - a 5 x 3 layout: pick a symbol in the palette (or the eraser), then tap cells. An empty cell is filled at spin
+       time with a random PAY symbol (never a wild or a scatter, so randomness never adds a feature by accident);
+     - copy respin: natural (the engine's 1 in 9 roll) / force / never. The copy only ever happens when BOTH boards
+       miss, so "force" does nothing on a layout that wins;
+     - presets (each one checked with the engine: see README "Test layout panel") and your own saved layouts
+       (this browser only: localStorage);
+     - SPIN THIS LAYOUT plays it; the panel reopens when the round is over (untick "reopen after spin" to stop that).
+   Every test spin marks the session QA (the red badge), like every other debug hook: a forced win is never genuine.
+   Positions are stage px per view (html.portrait = the portrait view). */
+(() => {
+  const stage = $('stage');
+  if (!stage) return;
+  const PAY = SYMS.filter((s) => s !== SP.WILD && s !== SP.XW && s !== SP.SCATTER);
+  const STORE = 'levee-jaw.test-layouts';
+  const ERASE = '';
+  const empty = () => [0, 1, 2, 3, 4].map(() => [null, null, null]);
+  let G = empty();
+  let brush = PAY[0];
+  let copyMode = 'natural';
+  let reopen = true;
+
+  /* presets: reels left to right, each [top, middle, bottom]; scored with the engine (scoreGrid / playRound) */
+  const PRESETS = [
+    { name: 'Free spins trigger', copy: 'never',
+      grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'CROWN', 'J'], ['KEY', 'J', 'K'], ['A', 'CROWN', 'Q']] },
+    { name: 'Free spins + Exp. Wild', copy: 'never',
+      grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'CROWN', 'J'], ['XW', 'J', 'K'], ['A', 'CROWN', 'Q']] },
+    { name: 'Exp. Wild centre', copy: 'never',
+      grid: [['J', 'KEY', 'Q'], ['A', 'KEY', 'STUD'], ['K', 'XW', 'J'], ['Q', 'KEY', 'A'], ['STUD', 'KEY', 'K']] },
+    { name: 'Exp. Wilds reels 2 + 4', copy: 'never',
+      grid: [['K', 'J', 'A'], ['XW', 'Q', 'J'], ['A', 'STUD', 'Q'], ['XW', 'K', 'J'], ['Q', 'A', 'K']] },
+    { name: 'Copy respin', copy: 'force',
+      grid: [['J', 'Q', 'K'], ['A', 'KEY', 'STUD'], ['Q', 'J', 'A'], ['STUD', 'KEY', 'K'], ['J', 'A', 'Q']] },
+    { name: 'BIG WIN (18×)', copy: 'never',
+      grid: [['BLADE', 'J', 'Q'], ['BLADE', 'A', 'KEY'], ['BLADE', 'K', 'STUD'], ['J', 'KEY', 'A'], ['Q', 'STUD', 'K']] },
+    { name: 'MEGA WIN (113×)', copy: 'never',
+      grid: [['RING', 'RING', 'RING'], ['RING', 'W', 'RING'], ['RING', 'RING', 'RING'], ['RING', 'W', 'RING'], ['RING', 'RING', 'RING']] },
+    { name: 'All wilds (563×)', copy: 'never',
+      grid: [['W', 'W', 'W'], ['W', 'W', 'W'], ['W', 'W', 'W'], ['W', 'W', 'W'], ['W', 'W', 'W']] },
+    { name: 'Near miss (2 scatters)', copy: 'never',
+      grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'J', 'A'], ['KEY', 'CROWN', 'K'], ['A', 'J', 'Q']] },
+  ];
+
+  const css = document.createElement('style');
+  css.textContent = `
+  #tpBtn{position:absolute;left:190px;top:978px;width:130px;height:52px;border-radius:26px;z-index:40;cursor:pointer;
+    font:900 22px SPRoboto,Roboto,Arial,sans-serif;letter-spacing:.12em;color:#ffe9b0;background:linear-gradient(#5a1a1f,#2a0d10);
+    border:2px solid #d4a85a;box-shadow:0 0 12px rgba(255,190,80,.45);display:flex;align-items:center;justify-content:center;
+    user-select:none;-webkit-user-select:none;touch-action:manipulation}
+  #tpBtn:active{transform:scale(.94)}
+  html.portrait #tpBtn{left:150px;top:1792px}
+  #tpPanel{position:absolute;left:310px;top:26px;width:1000px;transform:scale(1.3);transform-origin:0 0;z-index:60;display:none;box-sizing:border-box;padding:18px 20px 20px;
+    font:600 18px SPRoboto,Roboto,Arial,sans-serif;color:#f0dcb4;background:rgba(18,11,7,.97);border:3px solid #d4a85a;
+    border-radius:18px;box-shadow:0 0 0 2px #2a0d10,0 18px 60px rgba(0,0,0,.75);user-select:none;-webkit-user-select:none}
+  #tpPanel.on{display:block}
+  #tpPanel *{box-sizing:border-box}
+  #tpPanel button{font:800 17px SPRoboto,Roboto,Arial,sans-serif;color:#f0dcb4;background:#2b1c12;border:2px solid #6b5030;
+    border-radius:10px;padding:0 12px;height:48px;cursor:pointer;touch-action:manipulation}
+  #tpPanel button:active{transform:scale(.96)}
+  #tpPanel button.on{background:#d4a85a;color:#24140a;border-color:#ffe2a0}
+  .tp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .tp-head b{font-size:26px;letter-spacing:.1em;color:#ffd77a}
+  .tp-head span{font-size:15px;opacity:.75;margin-left:14px}
+  #tpPanel .tp-x{width:46px;height:42px;font-size:22px;padding:0}
+  .tp-main{display:flex;gap:26px}
+  .tp-grid{display:grid;grid-template-columns:repeat(5,120px);grid-template-rows:repeat(3,120px);gap:8px}
+  .tp-cell{position:relative;border-radius:10px;background:#16241c;border:2px solid #34503f;display:flex;align-items:center;
+    justify-content:center;cursor:pointer;overflow:hidden}
+  .tp-cell.r2{background:#4a1016;border-color:#7a2a30}
+  .tp-cell.xw{box-shadow:inset 0 0 0 3px #ffcf5a}
+  .tp-cell.xwr:not(.xw)::after{content:'EXPANDS';position:absolute;bottom:6px;font-size:12px;letter-spacing:.1em;color:#ffcf5a}
+  .tp-cell img{max-width:96%;max-height:96%;pointer-events:none}
+  .tp-cell em{font-style:normal;font-size:30px;opacity:.25}
+  .tp-txt{font-size:15px;font-weight:900;text-align:center}
+  .tp-side{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .tp-side h5{margin:0;font-size:14px;letter-spacing:.14em;color:#ffd77a;font-weight:900}
+  .tp-seg{display:flex;gap:6px}
+  #tpPanel .tp-seg button{flex:1;padding:0 4px}
+  .tp-note{font-size:13px;opacity:.65;line-height:1.3}
+  .tp-chk{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:15px}
+  .tp-chk i{width:24px;height:24px;border-radius:6px;border:2px solid #d4a85a;display:inline-block;flex:none}
+  .tp-chk.on i{background:#d4a85a;box-shadow:inset 0 0 0 4px #18100a}
+  .tp-saved{flex:1;overflow-y:auto;max-height:190px;display:flex;flex-direction:column;gap:6px}
+  .tp-saved div{display:flex;gap:6px}
+  #tpPanel .tp-saved button:first-child{flex:1;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  #tpPanel .tp-saved button:last-child{width:42px;padding:0}
+  .tp-pal{display:flex;gap:5px;margin:16px 0 12px;flex-wrap:wrap}
+  .tp-sym{width:58px;height:58px;border-radius:10px;background:#16241c;border:2px solid #34503f;display:flex;align-items:center;
+    justify-content:center;cursor:pointer;overflow:hidden}
+  .tp-sym img{max-width:94%;max-height:94%;pointer-events:none}
+  .tp-sym.on{border-color:#ffe2a0;box-shadow:0 0 0 3px #d4a85a,0 0 14px rgba(255,200,90,.7)}
+  .tp-sym.erase{font-size:13px;font-weight:900;color:#f0dcb4}
+  .tp-pre{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  #tpPanel .tp-pre button{height:46px;font-size:15px;padding:0 12px}
+  .tp-foot{display:flex;gap:8px;align-items:center}
+  .tp-foot .sp{flex:1}
+  #tpPanel .tp-go{height:56px;padding:0 26px;font-size:21px;letter-spacing:.06em;color:#24140a;
+    background:linear-gradient(#ffe08a,#d49a2a);border-color:#fff0c0}
+  /* portrait: a phone shows the 1080 px stage at about a third of its size, so the panel stacks and everything is
+     drawn about twice as large (tap targets of ~25 pt or more on the phone) */
+  html.portrait #tpPanel{left:16px;top:70px;width:1048px;transform:none;padding:26px 28px 30px;font-size:30px;border-width:4px}
+  html.portrait #tpPanel button{font-size:28px;height:72px;border-radius:14px;padding:0 20px}
+  html.portrait .tp-head b{font-size:44px}
+  html.portrait .tp-head span{display:none}
+  html.portrait #tpPanel .tp-x{width:80px;height:72px;font-size:36px}
+  html.portrait .tp-main{flex-direction:column;gap:22px}
+  html.portrait .tp-grid{grid-template-columns:repeat(5,178px);grid-template-rows:repeat(3,178px);gap:12px}
+  html.portrait .tp-cell em{font-size:48px}
+  html.portrait .tp-cell.xwr:not(.xw)::after{font-size:20px}
+  html.portrait .tp-side h5{font-size:24px}
+  html.portrait .tp-note{font-size:22px}
+  html.portrait .tp-chk{font-size:28px;gap:14px}
+  html.portrait .tp-chk i{width:40px;height:40px;border-radius:9px}
+  html.portrait .tp-saved{max-height:170px;gap:10px}
+  html.portrait #tpPanel .tp-saved button:last-child{width:72px}
+  html.portrait .tp-pal{gap:9px;margin:22px 0 18px}
+  html.portrait .tp-sym{width:113px;height:113px;border-radius:14px}
+  html.portrait .tp-sym.erase{font-size:22px}
+  html.portrait .tp-pre{gap:10px;margin-bottom:22px}
+  html.portrait #tpPanel .tp-pre button{height:64px;font-size:25px;padding:0 16px}
+  html.portrait .tp-foot{flex-wrap:wrap;gap:12px}
+  html.portrait .tp-foot .sp{display:none}
+  html.portrait #tpPanel .tp-go{width:100%;height:96px;font-size:36px;margin-top:6px}`;
+  document.head.appendChild(css);
+
+  const el = (tag, cls, txt) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt != null) e.textContent = txt;
+    return e;
+  };
+  const tap = (e, fn) => { e.addEventListener('click', (ev) => { ev.stopPropagation(); fn(ev); }); return e; };
+  const pic = (s) => {
+    const u = spriteURL[s];
+    if (u && spriteOK[s]) { const i = el('img'); setSrc(i, u); i.alt = LABEL[s] || s; i.draggable = false; return i; }
+    return el('span', 'tp-txt', (SKIN.short && SKIN.short[s]) || s);
+  };
+
+  /* ---------------------------------------------------------------- markup */
+  const btn = tap(el('div', '', 'TEST'), () => (panel.classList.contains('on') ? hide() : show()));
+  btn.id = 'tpBtn'; btn.title = 'Test layout: place symbols and spin them';
+  const panel = el('div'); panel.id = 'tpPanel';
+  panel.addEventListener('pointerdown', (e) => e.stopPropagation());   // the cabinet never sees taps on the panel
+
+  const head = el('div', 'tp-head');
+  const ttl = el('div'); ttl.append(el('b', '', 'TEST LAYOUT'), el('span', '', 'pick a symbol, tap cells · empty = random'));
+  head.append(ttl, tap(el('button', 'tp-x', '✕'), hide));
+
+  const grid = el('div', 'tp-grid');
+  const cells = [];
+  for (let y = 0; y < 3; y++) for (let r = 0; r < 5; r++) {
+    const c = tap(el('div', 'tp-cell' + (r === 2 ? ' r2' : '')), () => { G[r][y] = brush === ERASE ? null : brush; draw(); });
+    c.title = `reel ${r + 1}, row ${y + 1}`;
+    cells.push({ c, r, y });
+    grid.appendChild(c);
+  }
+
+  const side = el('div', 'tp-side');
+  const seg = el('div', 'tp-seg');
+  const segBtns = {};
+  [['natural', 'Natural'], ['force', 'Force'], ['never', 'Never']].forEach(([k, t]) => {
+    segBtns[k] = tap(el('button', '', t), () => { copyMode = k; draw(); });
+    seg.appendChild(segBtns[k]);
+  });
+  const chk = tap(el('div', 'tp-chk'), () => { reopen = !reopen; draw(); });
+  chk.append(el('i'), el('span', '', 'Reopen after spin'));
+  const saved = el('div', 'tp-saved');
+  side.append(el('h5', '', 'COPY RESPIN'), seg,
+    el('div', 'tp-note', 'Only when both boards miss. Natural = the game\'s 1 in 9 roll.'),
+    chk, el('h5', '', 'MY LAYOUTS'), saved);
+
+  const main = el('div', 'tp-main');
+  main.append(grid, side);
+
+  const pal = el('div', 'tp-pal');
+  const palBtns = {};
+  SYMS.forEach((s) => {
+    const b = tap(el('div', 'tp-sym'), () => { brush = s; draw(); });
+    b.title = LABEL[s] || s; b.appendChild(pic(s));
+    palBtns[s] = b; pal.appendChild(b);
+  });
+  palBtns[ERASE] = tap(el('div', 'tp-sym erase', 'ERASE'), () => { brush = ERASE; draw(); });
+  palBtns[ERASE].title = 'Eraser: the cell is filled at random';
+  pal.appendChild(palBtns[ERASE]);
+
+  const pre = el('div', 'tp-pre');
+  PRESETS.forEach((p) => pre.appendChild(tap(el('button', '', p.name), () => {
+    G = p.grid.map((c) => c.slice()); copyMode = p.copy; draw();
+  })));
+
+  const foot = el('div', 'tp-foot');
+  foot.append(
+    tap(el('button', '', 'Clear'), () => { G = empty(); draw(); }),
+    tap(el('button', '', 'Fill empty randomly'), () => { G = G.map((c) => c.map((s) => s || rnd())); draw(); }),
+    tap(el('button', '', 'Save layout'), save),
+    el('div', 'sp'),
+    tap(el('button', 'tp-go', 'SPIN THIS LAYOUT ▶'), spinLayout));
+
+  panel.append(head, main, pal, pre, foot);
+  stage.append(btn, panel);
+
+  /* ---------------------------------------------------------------- state -> view */
+  function draw() {
+    for (const { c, r, y } of cells) {
+      c.replaceChildren(G[r][y] ? pic(G[r][y]) : el('em', '', '?'));
+      const xwReel = G[r].indexOf(SP.XW) >= 0;
+      c.classList.toggle('xw', G[r][y] === SP.XW);
+      c.classList.toggle('xwr', xwReel);
+    }
+    for (const k of Object.keys(palBtns)) palBtns[k].classList.toggle('on', k === brush);
+    for (const k of Object.keys(segBtns)) segBtns[k].classList.toggle('on', k === copyMode);
+    chk.classList.toggle('on', reopen);
+    drawSaved();
+  }
+  const rnd = () => PAY[Math.floor(Math.random() * PAY.length)];
+
+  /* ---------------------------------------------------------------- saved layouts (this browser only) */
+  const load = () => { try { const a = JSON.parse(localStorage.getItem(STORE) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const store = (a) => { try { localStorage.setItem(STORE, JSON.stringify(a)); return true; } catch (e) { return false; } };
+  const valid = (g) => Array.isArray(g) && g.length === 5 && g.every((c) => Array.isArray(c) && c.length === 3 &&
+    c.every((s) => s === null || SYMS.indexOf(s) >= 0));
+  function drawSaved() {
+    const list = load().filter((x) => x && valid(x.grid));
+    saved.replaceChildren();
+    if (!list.length) { saved.appendChild(el('div', 'tp-note', 'Nothing saved yet. "Save layout" keeps the current one here.')); return; }
+    list.forEach((x, i) => {
+      const row = el('div');
+      row.append(
+        tap(el('button', '', x.name), () => { G = x.grid.map((c) => c.slice()); copyMode = x.copy || 'natural'; draw(); }),
+        tap(el('button', '', '✕'), () => { const a = load(); a.splice(i, 1); store(a); draw(); }));
+      saved.appendChild(row);
+    });
+  }
+  function save() {
+    const a = load();
+    let name = 'Layout ' + (a.length + 1);
+    try { const n = window.prompt('Name this layout', name); if (n === null) return; if (n.trim()) name = n.trim().slice(0, 40); } catch (e) {}
+    a.push({ name, grid: G.map((c) => c.slice()), copy: copyMode });
+    if (!store(a)) toast('Not saved', 'This browser blocks local storage (private window?).', 2200);
+    draw();
+  }
+
+  /* ---------------------------------------------------------------- open / close / spin */
+  function show() { draw(); panel.classList.add('on'); }
+  function hide() { panel.classList.remove('on'); }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('on')) hide(); });
+
+  async function spinLayout() {
+    if (autoplay) { toast('Test layout', 'Switch autoplay off first.', 1800); return; }
+    if (busy) { toast('Test layout', 'Wait for the current round to finish.', 1800); return; }
+    const g = G.map((c) => c.map((s) => s || rnd()));
+    const dbgWasOn = $('dbg').classList.contains('on');
+    qaMark('test layout');
+    if (!dbgWasOn) dbgShow(false);             // the QA badge stays; the log overlay only comes back on G
+    pendingForce = { grid: g };                // replaces anything queued from the console
+    if (copyMode !== 'natural') pendingForce.copy = copyMode === 'force';
+    dbg('test layout: ' + g.map((c) => c.join('/')).join(' | ') + ' · copy ' + copyMode);
+    hide();
+    const r = await playOne(true);
+    if (r === true && reopen) show();
+  }
+})();
+
 })();
 </script>
 </body>
