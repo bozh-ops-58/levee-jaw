@@ -3277,8 +3277,13 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
        miss, so "force" does nothing on a layout that wins;
      - presets (each one checked with the engine: see README "Test layout panel") and your own saved layouts
        (this browser only: localStorage);
-     - SPIN THIS LAYOUT plays it; the panel reopens when the round is over (untick "reopen after spin" to stop that).
-   Every test spin marks the session QA (the red badge), like every other debug hook: a forced win is never genuine.
+     - SPIN THIS LAYOUT plays it; the panel reopens when the round is over (untick "reopen after spin" to stop that);
+     - "record video": the spin is recorded from the tab itself (getDisplayMedia + MediaRecorder: the browser asks to
+       share the tab every time, Chrome crops to the game with Region Capture) from just before the spin to 1.5 s after
+       the round, with the game's sound, and downloads as MP4 (VP9, Chrome / Edge) or WebM (Firefox). The TEST button and the debug
+       log are hidden while it records. Phones cannot record a page (no getDisplayMedia): greyed out there.
+   Every test spin marks the session QA like every other debug hook (SP_DEBUG.qa, the G debug log); the red QA
+   badge itself is hidden for good (Denis, 2026-10-18).
    Positions are stage px per view (html.portrait = the portrait view). */
 (() => {
   const stage = $('stage');
@@ -3291,6 +3296,9 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   let brush = PAY[0];
   let copyMode = 'natural';
   let reopen = true;
+  let recOn = false;
+  let layoutName = null;                       // the preset / saved layout on the grid (the video's file name), if untouched
+  const canRec = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && window.MediaRecorder);
 
   /* presets: reels left to right, each [top, middle, bottom]; scored with the engine (scoreGrid / playRound) */
   const PRESETS = [
@@ -3353,6 +3361,11 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   .tp-chk{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:15px}
   .tp-chk i{width:24px;height:24px;border-radius:6px;border:2px solid #d4a85a;display:inline-block;flex:none}
   .tp-chk.on i{background:#d4a85a;box-shadow:inset 0 0 0 4px #18100a}
+  .tp-chk.off{opacity:.4;cursor:default}
+  .tp-chk.rec.on i{background:#e0303a;border-color:#ff8080}
+  html.tp-rec #tpBtn,html.tp-rec #dbg{visibility:hidden!important}
+  /* Denis 2026-10-18: the QA badge is never shown (the session is still flagged: SP_DEBUG.qa, the G debug log) */
+  #qa{display:none!important}
   .tp-saved{flex:1;overflow-y:auto;max-height:190px;display:flex;flex-direction:column;gap:6px}
   .tp-saved div{display:flex;gap:6px}
   #tpPanel .tp-saved button:first-child{flex:1;text-align:left;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -3422,7 +3435,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   const grid = el('div', 'tp-grid');
   const cells = [];
   for (let y = 0; y < 3; y++) for (let r = 0; r < 5; r++) {
-    const c = tap(el('div', 'tp-cell' + (r === 2 ? ' r2' : '')), () => { G[r][y] = brush === ERASE ? null : brush; draw(); });
+    const c = tap(el('div', 'tp-cell' + (r === 2 ? ' r2' : '')), () => { G[r][y] = brush === ERASE ? null : brush; layoutName = null; draw(); });
     c.title = `reel ${r + 1}, row ${y + 1}`;
     cells.push({ c, r, y });
     grid.appendChild(c);
@@ -3437,10 +3450,14 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   });
   const chk = tap(el('div', 'tp-chk'), () => { reopen = !reopen; draw(); });
   chk.append(el('i'), el('span', '', 'Reopen after spin'));
+  const recChk = tap(el('div', 'tp-chk rec' + (canRec ? '' : ' off')), () => { if (canRec) { recOn = !recOn; draw(); } });
+  recChk.append(el('i'), el('span', '', canRec ? 'Record video of the spin' : 'Video: desktop browsers only (use the phone\'s screen recorder)'));
+  recChk.title = canRec ? 'Records the spin with sound and downloads it. The browser asks to share this tab each time.' :
+    'This browser cannot record a page (phones / tablets): use the device\'s own screen recorder';
   const saved = el('div', 'tp-saved');
   side.append(el('h5', '', 'COPY RESPIN'), seg,
     el('div', 'tp-note', 'Only when both boards miss. Natural = the game\'s 1 in 9 roll.'),
-    chk, el('h5', '', 'MY LAYOUTS'), saved);
+    chk, recChk, el('h5', '', 'MY LAYOUTS'), saved);
 
   const main = el('div', 'tp-main');
   main.append(grid, side);
@@ -3458,12 +3475,12 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
 
   const pre = el('div', 'tp-pre');
   PRESETS.forEach((p) => pre.appendChild(tap(el('button', '', p.name), () => {
-    G = p.grid.map((c) => c.slice()); copyMode = p.copy; draw();
+    G = p.grid.map((c) => c.slice()); copyMode = p.copy; layoutName = p.name; draw();
   })));
 
   const foot = el('div', 'tp-foot');
   foot.append(
-    tap(el('button', '', 'Clear'), () => { G = empty(); draw(); }),
+    tap(el('button', '', 'Clear'), () => { G = empty(); layoutName = null; draw(); }),
     tap(el('button', '', 'Fill empty randomly'), () => { G = G.map((c) => c.map((s) => s || rnd())); draw(); }),
     tap(el('button', '', 'Save layout'), save),
     el('div', 'sp'),
@@ -3483,6 +3500,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
     for (const k of Object.keys(palBtns)) palBtns[k].classList.toggle('on', k === brush);
     for (const k of Object.keys(segBtns)) segBtns[k].classList.toggle('on', k === copyMode);
     chk.classList.toggle('on', reopen);
+    recChk.classList.toggle('on', recOn && canRec);
     drawSaved();
   }
   const rnd = () => PAY[Math.floor(Math.random() * PAY.length)];
@@ -3499,7 +3517,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
     list.forEach((x, i) => {
       const row = el('div');
       row.append(
-        tap(el('button', '', x.name), () => { G = x.grid.map((c) => c.slice()); copyMode = x.copy || 'natural'; draw(); }),
+        tap(el('button', '', x.name), () => { G = x.grid.map((c) => c.slice()); copyMode = x.copy || 'natural'; layoutName = x.name; draw(); }),
         tap(el('button', '', '✕'), () => { const a = load(); a.splice(i, 1); store(a); draw(); }));
       saved.appendChild(row);
     });
@@ -3518,18 +3536,78 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   function hide() { panel.classList.remove('on'); }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('on')) hide(); });
 
+  /* ---------------------------------------------------------------- video of the spin (desktop browsers) */
+  /* the ONE place a download link is set: a Blob this page recorded itself, as an object link. build.mjs checks this
+     helper word for word, the way it checks setSrc, and allows no other .href assignment) */
+  function saveBlob(blob, name) {
+    if (!(blob instanceof Blob)) throw new Error('saveBlob: a Blob this page recorded, nothing else');
+    const u = URL.createObjectURL(blob);
+    if (u.indexOf('blob:') !== 0) throw new Error('saveBlob: blob: URLs only');
+    const a = document.createElement('a'); a.download = String(name); a.href = u;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 60000);
+  }
+  async function startRec() {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: { ideal: 60 }, cursor: 'never' }, audio: true,
+        preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude', systemAudio: 'exclude' });
+    } catch (e) { return null; }
+    const track = stream.getVideoTracks()[0];
+    // a TAB only: a whole screen or another window could put anything on the user's desktop into the video
+    const surface = track && track.getSettings ? track.getSettings().displaySurface : undefined;
+    if (!track || (surface && surface !== 'browser')) { stream.getTracks().forEach((t) => t.stop()); return 'surface'; }
+    try { if (window.CropTarget && track.cropTo) await track.cropTo(await CropTarget.fromElement(stage)); } catch (e) {}   // Chrome: the game only
+    // VP9 in MP4 first: Chrome's H.264 MP4 recorder stopped delivering video mid-clip in testing (audio ran on), VP9 did not
+    const type = ['video/mp4;codecs=vp9,opus', 'video/webm;codecs=vp9,opus', 'video/webm']
+      .find((t) => MediaRecorder.isTypeSupported(t)) || '';
+    const rec = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 16e6 } : { videoBitsPerSecond: 16e6 });
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    const ended = new Promise((res) => { rec.onstop = res; });
+    track.addEventListener('ended', () => { if (rec.state !== 'inactive') rec.stop(); });   // "Stop sharing" clicked
+    return { stream, rec, chunks, ended, type: rec.mimeType || type || 'video/webm' };
+  }
+  const fileName = (type) => {
+    const d = new Date(), z = (n) => String(n).padStart(2, '0');
+    const slug = (layoutName || 'custom').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'custom';
+    return 'levee-jaw-test-' + slug + '-' + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '-' + z(d.getHours()) +
+      z(d.getMinutes()) + (type.indexOf('mp4') >= 0 ? '.mp4' : '.webm');
+  };
+
   async function spinLayout() {
     if (autoplay) { toast('Test layout', 'Switch autoplay off first.', 1800); return; }
     if (busy) { toast('Test layout', 'Wait for the current round to finish.', 1800); return; }
+    let R = null;
+    if (recOn && canRec) {                     // first thing in the tap: the share dialog needs the user's gesture
+      R = await startRec();
+      if (R === 'surface') { toast('Not recorded', 'Share this TAB (not a window or the whole screen). Nothing was spun.', 3200); return; }
+      if (!R) { toast('Recording cancelled', 'No tab was shared, so nothing was spun.', 2200); return; }
+      if (busy || autoplay) { R.stream.getTracks().forEach((t) => t.stop()); return; }
+    }
     const g = G.map((c) => c.map((s) => s || rnd()));
     const dbgWasOn = $('dbg').classList.contains('on');
     qaMark('test layout');
-    if (!dbgWasOn) dbgShow(false);             // the QA badge stays; the log overlay only comes back on G
+    if (!dbgWasOn) dbgShow(false);             // the log overlay only comes back on G
     pendingForce = { grid: g };                // replaces anything queued from the console
     if (copyMode !== 'natural') pendingForce.copy = copyMode === 'force';
-    dbg('test layout: ' + g.map((c) => c.join('/')).join(' | ') + ' · copy ' + copyMode);
+    dbg('test layout: ' + g.map((c) => c.join('/')).join(' | ') + ' · copy ' + copyMode + (R ? ' · recording' : ''));
     hide();
-    const r = await playOne(true);
+    if (R) { document.documentElement.classList.add('tp-rec'); await sleep(450); R.rec.start(250); }
+    let r;
+    try { r = await playOne(true); } finally {
+      if (R) {
+        if (r === true) await sleep(1500);     // the win settles on screen
+        if (R.rec.state !== 'inactive') R.rec.stop();
+        await R.ended;
+        R.stream.getTracks().forEach((t) => t.stop());
+        document.documentElement.classList.remove('tp-rec');
+        const blob = new Blob(R.chunks, { type: R.type.split(';')[0] });
+        const name = fileName(R.type);
+        if (r === true && blob.size) { saveBlob(blob, name); toast('Video saved', name, 2600); }
+        else if (r === true) toast('Recording failed', 'The browser delivered no video.', 2400);
+      }
+    }
     if (r === true && reopen) show();
   }
 })();
