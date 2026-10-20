@@ -637,8 +637,8 @@
      FINAL retune (2026-10-16, v11): one XW rule for the whole game, reel 2 =
      exactly 1/3 of the (equal) reels 1,3 weight: 0.6 / 0.2 in base and
      free spins. Pinned in build.mjs + SPEC.md + CALIBRATION.md. */
-  const BASE_WILD = pick('baseWild', 3.525, 2);
-  const BASE_CROWN = pick('baseCrown', 2.535, 3);
+  const BASE_WILD = pick('baseWild', 6.2, 2);              // v15 (was 3.525)
+  const BASE_CROWN = pick('baseCrown', 2.34, 3);            // v15 (was 2.535) -> feature 1 in 129
   const BASE_XW_OUTER = pick('baseXwOuter', 0.6, 0.6);
   const BASE_XW_MID = pick('baseXwMid', 0.2, 0.2);
   /* BASE_ROYAL — uniform multiplier on the J/Q/K/A base weights (fork dial).
@@ -646,7 +646,7 @@
      RTP per hit than a plain wild, so W + XW alone cannot put base RTP on 67%
      AND the hit rate on 30%: more low-paying royals lift the hit rate while
      diluting the RTP, which closes the gap. */
-  const BASE_ROYAL = pick('baseRoyal', 1.2179, 1);
+  const BASE_ROYAL = pick('baseRoyal', 0.3, 1);             // v15 (was 1.2179): reels 1-3 lean on the themed symbols
 
   /* symbol mix of a non-expanded base cell (XW listed at 0: it never sits on
      a reel that did not expand) */
@@ -661,9 +661,9 @@
      FEATURE_WILD  W weight on the free-spin reels -> feature EV ~50x
      FEATURE_CROWN crown weight on the free-spin reels -> retrigger in ~1 of 8 features
      FEATURE_XW_OUTER / FEATURE_XW_MID  XW weight per cell, reels 1,3 / 2 (none on 0/4) */
-  const FEATURE_WILD = pick('featureWild', 1.815, BASE_WILD);
-  const FEATURE_CROWN = pick('featureCrown', 0.894, BASE_CROWN);
-  const FEATURE_XW_OUTER = pick('featureXwOuter', 0.6, BASE_XW_OUTER);
+  const FEATURE_WILD = pick('featureWild', 3.2, BASE_WILD);      // v15 (was 1.815)
+  const FEATURE_CROWN = pick('featureCrown', 1.1, BASE_CROWN);   // v15 (was 0.894): ~1 in 7 features retrigger
+  const FEATURE_XW_OUTER = pick('featureXwOuter', 1.14, BASE_XW_OUTER);   // v15 (was 0.6)
   const FEATURE_XW_MID = pick('featureXwMid', 0.2, BASE_XW_MID);
   const FEATURE_WEIGHTS = Object.assign({}, WEIGHTS,
     { J: 0, Q: 0, K: 0, A: 0, W: FEATURE_WILD, XW: 0, CROWN: FEATURE_CROWN }, T.featureWeights || {});
@@ -678,13 +678,19 @@
     base: [0, BASE_XW_OUTER, BASE_XW_MID, BASE_XW_OUTER, 0],
     feature: [0, FEATURE_XW_OUTER, FEATURE_XW_MID, FEATURE_XW_OUTER, 0],
   };
-  const reelWeights = (W, xw) => xw.map((x, r) => Object.assign({}, W, { XW: x }, WILD_REELS.indexOf(r) < 0 ? { W: 0, XW: 0 } : {}));
-  const BASE_REEL_WEIGHTS = reelWeights(WEIGHTS, XW_WEIGHTS.base);
+  /* v15 (2026-10-20, director's brief: base ~20%, Reel Split ~23% at ~1 in 40 / ~10x, free spins ~52% at ~1 in 125 /
+     ~70x): the OUTER base reels 0 and 4 carry only royals + crowns (EDGE_WEIGHTS: no themed symbols, no wilds), so a
+     plain base win is a small royal line. The Reel Split copies reel 2 onto reels 0 and 4, so a split plays the rich
+     middle mix on all five reels: that is what makes it ~10x. Free spins are unchanged in shape (no royals anywhere). */
+  const EDGE_WEIGHTS = Object.assign({}, WEIGHTS, { J: 64, Q: 36, K: 14, A: 6 }, T.edgeWeights || {});
+  for (const s of Object.keys(EDGE_WEIGHTS)) if (s !== 'CROWN' && ROYALS.indexOf(s) < 0 && !(T.edgeWeights && T.edgeWeights[s] !== undefined)) EDGE_WEIGHTS[s] = 0;
+  const reelWeights = (W, xw, edge) => xw.map((x, r) => Object.assign({}, (edge && (r === 0 || r === 4)) ? edge : W, { XW: x }, WILD_REELS.indexOf(r) < 0 ? { W: 0, XW: 0 } : {}));
+  const BASE_REEL_WEIGHTS = reelWeights(WEIGHTS, XW_WEIGHTS.base, EDGE_WEIGHTS);
   const FEATURE_REEL_WEIGHTS = reelWeights(FEATURE_WEIGHTS, XW_WEIGHTS.feature);
 
   /* Not dials (kept exactly as specified): */
-  const COPY_P = T.copyP !== undefined ? T.copyP : 1 / 9;   // copy roll on a double-miss
-  const COPY_P_FREE = T.copyPFree !== undefined ? T.copyPFree : 2 * COPY_P;   // v14: free spins, twice as often
+  const COPY_P = T.copyP !== undefined ? T.copyP : 0.0308;   // copy roll on a double-miss (v15: was 1/9) -> split 1 in 42.7
+  const COPY_P_FREE = T.copyPFree !== undefined ? T.copyPFree : 2 / 9;   // free spins: 2/9 (v14 value, kept explicit in v15)
   const FREE_SPINS = 10;
   const RETRIGGER_SPINS = 10;                                // v14: 3+ crowns on a free spin add 10
   const MAX_FREE_SPINS = 1000;                               // loop guard only (the 3500x cap ends a round long before)
@@ -998,14 +1004,14 @@
 
   const api = {
     SYMBOLS, LABELS, PAYS, SPEC_PAYS, LINES, CAP, BOARDS, WILD, XW, SCATTER, ROYALS,
-    WEIGHTS, FEATURE_WEIGHTS, SPEC_WEIGHTS, COPY_P, COPY_P_FREE, FREE_SPINS, RETRIGGER_SPINS, MAX_FREE_SPINS,
+    WEIGHTS, EDGE_WEIGHTS, FEATURE_WEIGHTS, SPEC_WEIGHTS, COPY_P, COPY_P_FREE, FREE_SPINS, RETRIGGER_SPINS, MAX_FREE_SPINS,
     MAX_PER_REEL, WILD_REELS, PAY_STEP,
     XW_WEIGHTS, BASE_REEL_WEIGHTS, FEATURE_REEL_WEIGHTS, XW_EXPAND_P,
     DIALS: { PAY_SCALE, BASE_WILD, BASE_CROWN, BASE_ROYAL, BASE_XW_OUTER, BASE_XW_MID,
              FEATURE_WILD, FEATURE_CROWN, FEATURE_XW_OUTER, FEATURE_XW_MID, asWritten: AS_WRITTEN },
-    TARGETS: { rtp: 0.961, baseRtp: 0.561, featureRtp: 0.40, hitRate: 0.30,
-               copyOfDoubleMiss: 1 / 9, featureRate: 1 / 125, featureEv: 50, retriggerShare: 0.125, cap: 3500 },
-    RTP_LABEL: '96.1%',
+    TARGETS: { rtp: 0.960, baseRtp: 0.437, featureRtp: 0.523, hitRate: 0.257,
+               copyOfDoubleMiss: 0.0308, featureRate: 1 / 129.4, featureEv: 67.7, retriggerShare: 0.145, cap: 3500 },
+    RTP_LABEL: '96.0%',
     BETS_CENTS, winCents,
     makeRng, makeRngWide, playRound, scoreGrid, scoreLine, crownCells,
   };
@@ -1705,9 +1711,13 @@ const reelEls = [], stripEls = [];
 // actually spinning: the base/copy set, or the free-spin set during the feature (fix round 2)
 const wArr = (W) => SYMS.map((s) => (W && W[s] != null ? W[s] : 1));
 const FILL = { base: wArr(SP.WEIGHTS), free: wArr(SP.FEATURE_WEIGHTS || SP.WEIGHTS) };
+// v15: per-reel filler (the engine's per-reel tables, XW left out): the outer base reels carry only royals + crowns,
+// so their moving strips must not flash themed symbols that can never land there
+const noXW = (W) => W && Object.assign({}, W, { XW: 0 });
+const FILL_REEL = { base: (SP.BASE_REEL_WEIGHTS || []).map((W) => wArr(noXW(W))), free: (SP.FEATURE_REEL_WEIGHTS || []).map((W) => wArr(noXW(W))) };
 let fillSet = 'base';
-function visualSym() {
-  const arr = FILL[fillSet] || FILL.base;
+function visualSym(reel) {
+  const arr = (FILL_REEL[fillSet] && FILL_REEL[fillSet][reel]) || FILL[fillSet] || FILL.base;
   let r = Math.random() * arr.reduce((a, b) => a + b, 0);
   for (let i = 0; i < SYMS.length; i++) { r -= arr[i]; if (r < 0) return SYMS[i]; }
   return SYMS[0];
@@ -1742,7 +1752,7 @@ function layStrip(r, list, bottoms, rowOf) {
 }
 const state = { grid: [], pads: [] };
 function setReel(r, col) {                    // static: [pad, row0, row1, row2, pad]
-  const pads = [visualSym(), visualSym()];
+  const pads = [visualSym(r), visualSym(r)];
   layStrip(r, [pads[0], col[0], col[1], col[2], pads[1]], [3], (i) => (i >= 1 && i <= 3 ? i - 1 : -1));
   stripEls[r].style.transform = 'translateY(0px)';
   state.grid[r] = col.slice();
@@ -1772,7 +1782,7 @@ const RUN_SPLIT = (() => {
 })();
 function rollReel(r, col, delayMs, durMs, holdMs) {
   return new Promise((resolve) => {
-    const cur = state.grid[r] || [visualSym(), visualSym(), visualSym()];
+    const cur = state.grid[r] || [visualSym(r), visualSym(r), visualSym(r)];
     // LJ fork: holdMs (anticipation) = extra time spent at the curve's top speed, so a waited-on reel spins just
     // like a normal one, only for longer (no long slow stretch). The extra distance is whole cells, so the hold
     // time is rounded to them.
@@ -1783,9 +1793,9 @@ function rollReel(r, col, delayMs, durMs, holdMs) {
     const holdN = holdMs > 0 ? Math.max(1, Math.round((vTop * holdMs) / P)) : 0;
     const hold = holdN ? (holdN * P) / vTop : 0;
     const fillN = fillN0 + holdN;
-    const fill = Array.from({ length: fillN }, visualSym);
+    const fill = Array.from({ length: fillN }, () => visualSym(r));
     // top -> bottom: pad, final(3), fillers, current(3), pad
-    const list = [visualSym(), ...col, ...fill, ...cur, visualSym()];
+    const list = [visualSym(r), ...col, ...fill, ...cur, visualSym(r)];
     layStrip(r, list, [3, fillN + 6],                 // the landing bottom cell and the departing one
       (i) => (i >= 1 && i <= 3 ? i - 1 : i >= fillN + 4 && i <= fillN + 6 ? i - fillN - 4 : -1));   // row of each cell
     // LJ fork: an Expanding Wild column on this reel rides the strip (on top of the departing cells) and rolls off
@@ -2185,8 +2195,8 @@ function hud() {
    W-W-W line far likelier; tune.mjs measures the per-round chance of one (LEVEE JAW v11 engine: about 1 in 1 267 rounds, XW columns counted as wild). */
 /* v14: reels 0 and 4 draw no wild, so a base spin alone can never show W-W-W on a line: it takes a copy (reel 2's
    wilds copied onto 0 and 4) or the free spins. The footer shows rounds that see a W-W-W line, copy and feature
-   included, MEASURED (10M rounds of the v14 engine, 2026-10-19: 1 in 1 629). Re-measure on a retune. */
-const MAXLINE_ODDS = '1:1630';
+   included, MEASURED (10M rounds of the v15 engine, 2026-10-20: 1 in 844; v14 was 1 in 1 629). Re-measure on a retune. */
+const MAXLINE_ODDS = '1:844';
 function clock() { const d = new Date(); setText('fClock', String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')); }
 setInterval(clock, 10000); clock();
 
@@ -3131,11 +3141,11 @@ function renderRules() {
   const TG = SP.TARGETS || {};
   r.appendChild(el('div', 'note', `LEVEE JAW runs its own engine (forked from SALT PIMP on 2026-10-16: ${SKIN.terms.xw}, ${NFS} free spins on all five reels, no royals in free spins; ` +
     `2026-10-19: wilds only on reels 2-4, one wild and one ${SKIN.terms.scatter} per reel, the copy in free spins at 2 in 9, retrigger +10). ` +
-    `Copy 1 in 9, lines, boards and the 3500× cap are as written. The sheet: RTP ${SP.RTP_LABEL || '96.1%'} (base ${pct1(TG.baseRtp || 0.67)} incl. the copy, feature ${pct1(TG.featureRtp || 0.291)}), ` +
+    `2026-10-20 (v15, director's maths): in the base game the outer reels carry only royals and ${SKIN.terms.scatters}, the copy rolls 1 in ${(1 / (SP.COPY_P || 1 / 9)).toFixed(1)} on a double miss. Lines, boards and the 3500× cap are as written. The sheet: RTP ${SP.RTP_LABEL || '96.1%'} (base ${pct1(TG.baseRtp || 0.67)} incl. the copy, feature ${pct1(TG.featureRtp || 0.291)}), ` +
     `hit ${pct1(TG.hitRate || 0.3)}, feature 1 in ${Math.round(1 / (TG.featureRate || 1 / 125))}, feature EV ${TG.featureEv || 36}×; the exact readout of this engine is pinned in build.mjs (CALIBRATION.md). ` +
     `Wild share of base cells: ${(100 * (bw.W || 0) / (wsum(bw) || 1)).toFixed(1)}%.`));
-  r.appendChild(el('h3', '', 'Hit rate — which "30%"'));
-  r.appendChild(el('div', 'note', 'The sheet\'s "hit 30% on either board" is calibrated as: the paid spin pays anything, the copy included. ' +
+  r.appendChild(el('h3', '', 'Hit rate'));
+  r.appendChild(el('div', 'note', 'The hit rate (about 26% of spins) counts a spin that pays anything on either board, the copy included. ' +
     'The base step alone, before any copy, pays less often (about 25% of spins).'));
   r.appendChild(el('h3', '', 'Pays — three of a kind on a line'));
   const g = el('div', 'pays');
@@ -3167,15 +3177,15 @@ function renderRules() {
   });
   r.appendChild(ldw);
   r.appendChild(el('h3', '', 'The copy'));
-  r.appendChild(el('div', '', 'If neither board pays, there is a 1 in 9 chance of a COPY: the centre reel is copied onto the two outer reels, the two reels beside the centre respin once, and both boards are scored once more. No chain. ' + SKIN.terms.scatters + ' are counted after the copy, so a copy can create a trigger (a ' + SKIN.terms.scatter + ' on the centre reel becomes three) - or remove one (' + SKIN.terms.scatters + ' on the outer reels are overwritten). The copy carries the centre reel as it stands, wilds included, so after a copy the outer reels can show wilds. In free spins the copy comes twice as often: 2 in 9 on a free spin where neither board pays.'));
+  r.appendChild(el('div', '', 'In the base game the two outer reels show only J, Q, K, A and ' + SKIN.terms.scatters + ', so ordinary wins are royal lines. If neither board pays, there is a 1 in ' + Math.round(1 / (SP.COPY_P || 1 / 9)) + ' chance of a COPY (about one spin in 43): the centre reel is copied onto the two outer reels, the two reels beside the centre respin once, and both boards are scored once more. No chain. ' + SKIN.terms.scatters + ' are counted after the copy, so a copy can create a trigger (a ' + SKIN.terms.scatter + ' on the centre reel becomes three) - or remove one (' + SKIN.terms.scatters + ' on the outer reels are overwritten). The copy carries the centre reel as it stands, wilds included, so after a copy the outer reels can show wilds. In free spins the copy comes twice as often: 2 in 9 on a free spin where neither board pays.'));
   r.appendChild(el('h3', '', 'Free spins'));
   r.appendChild(el('div', '', `Three or more ${SKIN.terms.scatters} anywhere on the final screen (after a copy, copied ones count) start ${NFS} free spins at the same bet, after the base win is paid. ` +
     `${SKIN.terms.xwChar} clears the royals first: there is no J, Q, K or A on any reel during the free spins. All five reels spin on every free spin, with more ${SKIN.terms.wilds} (a feature-only weight set: about ${SP.FEATURE_WEIGHTS ? Math.round(100 * SP.FEATURE_WEIGHTS.W / SYMS.reduce((a, x) => a + (SP.FEATURE_WEIGHTS[x] || 0), 0)) : 30}% of their cells) and more ${SKIN.terms.xw}s. ` +
-    `If neither board pays on a free spin, there is a 2 in 9 chance of a copy (twice the base game's). Three or more ${SKIN.terms.scatters} on a free spin's final screen (after its copy) add ${SP.RETRIGGER_SPINS || 10} more free spins, any number of times; ${SKIN.terms.scatters} never pay. The royals return after the last free spin.`));
+    `If neither board pays on a free spin, there is a 2 in 9 chance of a copy. Three or more ${SKIN.terms.scatters} on a free spin's final screen (after its copy) add ${SP.RETRIGGER_SPINS || 10} more free spins, any number of times; ${SKIN.terms.scatters} never pay. The royals return after the last free spin.`));
   r.appendChild(el('h3', '', 'Limits'));
-  r.appendChild(el('div', '', `A round (base spin, copy and the whole feature together) pays at most ${SP.CAP}× the bet; reaching it ends the feature at once. RTP ${SP.RTP_LABEL || '96.1%'}. Buy Bonus is not priced yet and is outside the 96.1% sheet. Malfunction voids all pays.`));
+  r.appendChild(el('div', '', `A round (base spin, copy and the whole feature together) pays at most ${SP.CAP}× the bet; reaching it ends the feature at once. RTP ${SP.RTP_LABEL || '96.1%'}. Buy Bonus is not priced yet and is outside the RTP sheet. Malfunction voids all pays.`));
   r.appendChild(el('div', 'note', 'Footer "chance of max win per line": rounds that see three wilds (' + SKIN.terms.wilds + ' or ' + SKIN.terms.xw + ' columns) on one line, copy and free spins included. ' +
-    'Since 2026-10-19 the outer reels carry no wild, so a base spin alone never shows W-W-W: it takes a copy or the free spins. The footer shows how many rounds see one (measured: about 1 in 1 630).'));
+    'Since 2026-10-19 the outer reels carry no wild, so a base spin alone never shows W-W-W: it takes a copy or the free spins. The footer shows how many rounds see one (measured: about 1 in 844).'));
   r.appendChild(el('h3', '', 'Controls'));
   r.appendChild(el('div', 'note', 'Spin: big button or Space (press again to stop the reels quickly). Hold the big button or Space for continuous turbo spins. ' + SKIN.terms.turbo + 'Green button (or A) toggles autoplay; while it runs, Space / the spin button only quick-stop the reels. ' + SKIN.terms.betButtons + '; – / + step the bet. ' + SKIN.terms.fullscreen + 'Keyboard: ← / → or − / + bet · B bet menu · T turbo · A autoplay · I rules · M music · S sound · Esc close · Tab + Enter any button · D QA simulator · G debug overlay.'));
 }
@@ -3216,7 +3226,7 @@ function paintSim(a, N) {
     ['base RTP (incl. copy)', pct(a.base / a.n), pct(T.baseRtp), Math.abs(a.base / a.n - T.baseRtp) < 0.01],
     ['feature RTP', pct(a.feat / a.n), pct(T.featureRtp), Math.abs(a.feat / a.n - T.featureRtp) < 0.015],
     ['hit rate (base or copy pays)', pct(a.hits / a.n), pct(T.hitRate), Math.abs(a.hits / a.n - T.hitRate) < 0.01],
-    ['copy / double-miss', a.dmiss ? '1 in ' + (a.dmiss / Math.max(1, a.copies)).toFixed(2) : '—', '1 in 9', a.copies && Math.abs(a.dmiss / a.copies - 9) < 0.5],
+    ['copy / double-miss', a.dmiss ? '1 in ' + (a.dmiss / Math.max(1, a.copies)).toFixed(2) : '—', '1 in ' + (1 / SP.COPY_P).toFixed(1), a.copies && Math.abs(a.dmiss / a.copies * SP.COPY_P - 1) < 0.06],
     ['feature', a.feats ? '1 in ' + (a.n / a.feats).toFixed(1) : '—', '1 in ' + Math.round(1 / T.featureRate), a.feats && Math.abs(a.n / a.feats * T.featureRate - 1) < 0.08],
     ['avg feature', a.feats ? (a.feat / a.feats).toFixed(2) + '×' : '—', T.featureEv + '×', a.feats && Math.abs(a.feat / a.feats / T.featureEv - 1) < 0.08],
     ['max win', a.max.toFixed(2) + '×', SP.CAP + '× cap', true],
@@ -3278,15 +3288,16 @@ window.SP_DEBUG = {
 // idle screen (fix round 2): NOT the mockup's stops. A fixed-seed draw from the base weights, taking the first
 // grid that pays nothing and shows fewer than 3 crowns, so the attract screen never shows a win it did not pay.
 const IDLE = (() => {
-  const r = SP.makeRng(20261007), arr = FILL.base, tot = arr.reduce((a, b) => a + b, 0);
-  const pick = () => { let x = r() * tot; for (let i = 0; i < SYMS.length; i++) { x -= arr[i]; if (x < 0) return SYMS[i]; } return SYMS[0]; };
+  const r = SP.makeRng(20261007);
+  const pick = (reel) => { const arr = FILL_REEL.base[reel] || FILL.base, tot = arr.reduce((a, b) => a + b, 0);
+    let x = r() * tot; for (let i = 0; i < SYMS.length; i++) { x -= arr[i]; if (x < 0) return SYMS[i]; } return SYMS[0]; };
   for (let n = 0; n < 1000; n++) {
-    const g = [0, 1, 2, 3, 4].map(() => [pick(), pick(), pick()]);
+    const g = [0, 1, 2, 3, 4].map((reel) => [pick(reel), pick(reel), pick(reel)]);
     const flat = g.flat();
     if (SP.scoreGrid(g).total === 0 && flat.filter((c) => c === 'CROWN').length < 3 &&
-        flat.filter((c) => !/^[JQKA]$/.test(c)).length >= 7) return g;      // and not a wall of plaques
+        flat.filter((c) => !/^[JQKA]$/.test(c)).length >= 5) return g;      // and not a wall of plaques (v15: outer reels are royals only)
   }
-  return [['J', 'KEY', 'Q'], ['Q', 'CASH', 'K'], ['W', 'RING', 'STUD'], ['A', 'BLADE', 'K'], ['K', 'A', 'BANDANA']];
+  return [['J', 'Q', 'K'], ['Q', 'CASH', 'KEY'], ['W', 'RING', 'STUD'], ['A', 'BLADE', 'K'], ['K', 'J', 'A']];
 })();
 IDLE.forEach((col, r) => setReel(r, col));
 /* pre-warm (fix round 2): the first win / copy / feature used to stall 50-150 ms on first-time raster work
@@ -3344,7 +3355,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
    A small TEST button sits on the cabinet in both views. It opens a panel over the reels:
      - a 5 x 3 layout: pick a symbol in the palette (or the eraser), then tap cells. An empty cell is filled at spin
        time with a random PAY symbol (never a wild or a scatter, so randomness never adds a feature by accident);
-     - copy respin: natural (the engine's 1 in 9 roll) / force / never. The copy only ever happens when BOTH boards
+     - copy respin: natural (the engine's own roll, 1 in 32 since v15) / force / never. The copy only ever happens when BOTH boards
        miss, so "force" does nothing on a layout that wins;
      - presets (each one checked with the engine: see README "Test layout panel") and your own saved layouts
        (this browser only: localStorage);
@@ -3530,7 +3541,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   const saved = el('div', 'tp-saved');
   const warn = el('div', 'tp-warn');               // v14: a layout the game could not land naturally
   side.append(el('h5', '', 'COPY RESPIN'), seg,
-    el('div', 'tp-note', 'Only when both boards miss. Natural = the game\'s 1 in 9 roll.'),
+    el('div', 'tp-note', 'Only when both boards miss. Natural = the game\'s 1 in 32 roll.'),
     chk, recChk, warn, el('h5', '', 'MY LAYOUTS'), saved);
 
   const main = el('div', 'tp-main');
