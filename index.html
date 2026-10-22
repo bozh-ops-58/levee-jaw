@@ -3,6 +3,8 @@
   LEVEE JAW — playable prototype shell (template). Started as a RESKIN of SALT PIMP; since the 2026-10-16 fork LEVEE
   JAW has its OWN engine.js (Expanding Wild XW, 10 free spins on all five reels, no royals in free spins; sha256 pinned
   in build.mjs + SPEC.md) and the game code below carries the matching presentation (marked "LJ fork").
+  v16 (2026-10-22): one wild in the base game (no XW there); in free spins every wild lands as the plain W and expands;
+  the Reel Split never rolls over 3+ scatters; near-miss pairs are HELD during the split (copyAnim / respinCells).
 
   BUILD CONTRACT (for build.mjs)
   ------------------------------
@@ -108,6 +110,13 @@
   .cell.stripped{opacity:0;transition:none}
   .royalfall{position:absolute;width:256px;height:256px;pointer-events:none;will-change:transform}
   .royalfall img{width:100%;height:100%;display:block}
+  /* v16 Reel Split near-miss lock: a frame + HELD tag on each held cell (#fx), and a clipped mini-reel over each
+     unlocked cell of reels 1 / 3 while it respins (#reels; colours: SKIN css) */
+  .lockcell{position:absolute;border-radius:16px;pointer-events:none;animation:heldpulse 1.1s ease-in-out infinite}
+  .locktag{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);padding:2px 12px;border-radius:10px;
+    font-weight:900;font-size:24px;letter-spacing:.16em;line-height:1.2;white-space:nowrap;pointer-events:none}
+  .mreel{position:absolute;overflow:hidden;pointer-events:none}
+  @media (prefers-reduced-motion: reduce){.lockcell{animation:none}}
   .popring{position:absolute;border-radius:50%;pointer-events:none}
   /* LJ fork: anticipation glow around a reel that is spinning longer (colours: SKIN css .antic.scatter / .wild) */
   .antic{position:absolute;border-radius:18px;pointer-events:none;overflow:hidden;border:7px solid var(--ac);
@@ -262,6 +271,11 @@
   #held::after{bottom:0;height:var(--capHb,42px)}
   #held.on{animation:heldpulse 1.1s ease-in-out infinite}
   #heldtag{color:#ffe9b8;background:linear-gradient(180deg,#9c1f2b,#5c0d16);border:2px solid var(--brass-lt);
+    box-shadow:0 0 14px rgba(255,190,70,.9);text-shadow:0 1px 0 #000}
+  /* v16 Reel Split lock: the held glow's look on a single cell, the HELD badge's look on its tag */
+  .lockcell{border:5px solid var(--brass-lt);
+    box-shadow:0 0 22px 6px rgba(255,190,70,.8),0 0 50px 14px rgba(255,150,30,.3),inset 0 0 26px 8px rgba(255,200,90,.5)}
+  .locktag{color:#ffe9b8;background:linear-gradient(180deg,#9c1f2b,#5c0d16);border:2px solid var(--brass-lt);
     box-shadow:0 0 14px rgba(255,190,70,.9);text-shadow:0 1px 0 #000}
 
   /* live text (layout.json colours are applied per element by the SKIN js block) */
@@ -423,6 +437,21 @@
   html.portrait #splash .sp-amount{font-size:110px}
   html.portrait #splash .sp-title{font-size:80px;-webkit-text-stroke-width:5px}
   html.portrait #splash .sp-label{font-size:62px;-webkit-text-stroke-width:4px}
+  /* v16 fix round 2: Total Win tiers. sp-quiet = the below-BIG line; sp-tier = MEGA / EPIC / LEGENDARY WIN (the
+     legend look is hotter: white-gold to fire red, a pulsing glow); .hot = the LEGENDARY halo and rays */
+  #splash .sp-quiet{font-size:78px;-webkit-text-stroke-width:5px}
+  html.portrait #splash .sp-quiet{font-size:58px;-webkit-text-stroke-width:4px}
+  #splash .sp-tier{font-size:150px;-webkit-text-stroke-width:8px}
+  html.portrait #splash .sp-tier{font-size:104px;-webkit-text-stroke-width:6px}
+  #splash .sp-tier.epic{background:linear-gradient(180deg,#ffffff 0%,#fff1b0 22%,#ffc94a 50%,#e0761c 78%,#fff0b8 100%);-webkit-background-clip:text;background-clip:text}
+  #splash .sp-tier.legend{background:linear-gradient(180deg,#ffffff 0%,#fff3a8 18%,#ff9e2c 46%,#e2321a 74%,#ffd27a 100%);-webkit-background-clip:text;background-clip:text;
+    -webkit-text-stroke-color:#3a0606}
+  #splash.idle .sp-tier.legend{animation:spLegend .8s ease-in-out infinite alternate}
+  @keyframes spLegend{from{filter:drop-shadow(0 2px 0 #8a1a0a) drop-shadow(0 5px 0 #2a0404) drop-shadow(0 0 18px rgba(255,120,40,.7))}
+    to{filter:drop-shadow(0 2px 0 #8a1a0a) drop-shadow(0 5px 0 #2a0404) drop-shadow(0 0 46px rgba(255,90,30,1))}}
+  #splash .sp-fsrays{opacity:.85}
+  #splash .sp-rays.hot{background:repeating-conic-gradient(from 0deg,rgba(255,170,90,.62) 0deg 6deg,rgba(255,90,30,0) 9deg 21deg,rgba(255,170,90,.62) 24deg 24deg);animation-duration:7s}
+  #splash .sp-halo.hot{background:rgba(255,120,60,.42);box-shadow:0 0 70px 30px rgba(255,150,70,.95),0 0 170px 64px rgba(255,80,20,.5),0 0 280px 90px rgba(200,30,10,.25)}
   #splash .sp-spark{position:absolute;border-radius:50%;pointer-events:none;
     background:radial-gradient(circle,#fffbe0 0%,#ffd15a 45%,rgba(255,150,30,0) 72%)}
   /* the free spins counter: a brass-rimmed panel like the bet menu, an oxblood FREE SPINS tag */
@@ -533,6 +562,39 @@
    ALL FIVE reels spin, no royals on the free-spin reels. 3500x cap on the
    whole round (base + copy + feature).
 
+   v16 RULES (director + Denis, 2026-10-22; these win over the v14/v15 notes below):
+     - ONE WILD IN THE BASE GAME. The base game (base step and its copy respin) draws only the plain wild W; base
+       XW weights are 0, so an expanding wild can never land in the base game (SP_DEBUG.forceXW / force.xw and
+       force.grid can still put one there: QA only). In FREE SPINS the single wild IS the expanding one: the
+       free-spin reels draw no W, they draw XW, so every wild that lands in a free spin expands its reel. (The
+       page draws the landing cell with the W art, then expands it.) W keeps its 56.3x pay (top pay).
+     - NO CLONE OVER A TRIGGER. The Reel Split rolls only on a screen where neither board pays AND fewer than 3
+       crowns show (base game and free spins), so a copy can never overwrite a trigger or a retrigger. This holds
+       for force.copy too.
+     - NEAR-MISS LOCK. When the copy fires, every line (5 per board) whose three cells hold exactly ONE matching
+       pair (same pay symbol, pay symbol + wild, or two wilds; a crown never matches) with the third cell on a
+       reel the copy changes (0, 1, 3 or 4; never reel 2) locks that pair: a locked cell on reel 0/4 keeps its own
+       symbol instead of taking reel 2's, a locked cell on reel 1/3 is not respun. Two exceptions keep the
+       expanding wild whole: a copied XW reel 2 covers reels 0 and 4 entirely (their locks are dropped), and an
+       expanded XW reel 1/3 holding a locked cell holds the whole reel. Unlocked cells on reels 1/3 are redrawn
+       from the reel's table (unlocked cells only, the column redrawn until it respects one W / one crown); an
+       XW landing on one expands the reel (free spins). The copy step carries locked ([reel,row], incl. the
+       reel-2 partner cells) and nearMiss ({ board, line, cells }); spun lists only reels with a respun cell.
+       Fix round 1 (2026-10-22): an outer (reel 0/4) cell paired with a reel-2 cell is NOT held when the copy keeps the
+       pair by itself: same row (the outer cell takes that very symbol), or reel 2 shows a wild in the outer cell's row
+       (the outer cell becomes the wild, so a lock never stops a centre wild being copied out). Those held cells changed
+       nothing or cost pay; releasing them adds ~0.7pp to the split, paid back by COPY_P 0.0328 -> 0.0319.
+     - The maths is no longer enumerable (the copy depends on the whole board): build.mjs gates on mc.mjs, a
+       deterministic seeded Monte Carlo (CALIBRATION.md v16). exact.mjs is kept for the pre-v16 copy only.
+     - v16 sheet (240M rounds, fix round 2): RTP 96.01% = base step 20.6% + Reel Split 23.0% (1 in 42.4, ~9.8x) + free
+       spins 52.5% (1 in 131, avg 68.7x, median 35.2x, p99 505x, max 2,511x; 51% of features retrigger, 31.8 free spins
+       on average). Fix round 2 meets the brief's p99 >= ~500x (fix round 1: 451x) with new free-spin dials only
+       (FEATURE_CROWN 2.86, XW 0.31 / 0.2, FEATURE_LOW 1.12, FEATURE_HIGH 0.59, COPY_P_FREE 0.122) and COPY_P
+       0.0319 -> 0.03185 (RTP back to 96.0).
+       The cost is longer features (1 in 6 run to 50+ free spins, ~1 in 100,000 reaches the 1000-spin limit); the
+       feel improves a little (7+ dead spins in the first 10: 43.9% of features, fr1 53.0%). CALIBRATION.md v16 fix
+       round 2 has the trade-off table for Denis.
+
    v14 RULES (Denis, 2026-10-19):
      - wilds (W and the expanding XW) land only on reels 1, 2, 3 (the middle
        three); reels 0 and 4 never DRAW a wild. A copy still puts reel 2 as it
@@ -595,6 +657,7 @@
   const SCATTER = 'CROWN';
   const ROYALS = ['J', 'Q', 'K', 'A'];
   const isWild = (s) => s === WILD || s === XW;
+  const NEAR_MISS_LOCK = !T.noLock;   // harness only (mc.mjs --tune '{"noLock":true}': the copy without the v16 lock, for comparison)
 
   /* ------------------------------------------- paytable, x TOTAL bet (spec)
      Spec values, low -> high. The shipped table is SPEC x PAY_SCALE, snapped
@@ -637,16 +700,17 @@
      FINAL retune (2026-10-16, v11): one XW rule for the whole game, reel 2 =
      exactly 1/3 of the (equal) reels 1,3 weight: 0.6 / 0.2 in base and
      free spins. Pinned in build.mjs + SPEC.md + CALIBRATION.md. */
-  const BASE_WILD = pick('baseWild', 6.2, 2);              // v15 (was 3.525)
-  const BASE_CROWN = pick('baseCrown', 2.34, 3);            // v15 (was 2.535) -> feature 1 in 129
-  const BASE_XW_OUTER = pick('baseXwOuter', 0.6, 0.6);
-  const BASE_XW_MID = pick('baseXwMid', 0.2, 0.2);
+  const BASE_WILD = pick('baseWild', 7.4, 2);              // v16 (was 6.2): the one base wild also carries what the base XW paid
+  const BASE_CROWN = pick('baseCrown', 2.43, 3);            // v16 fix round 1 (v16: 2.42, v15: 2.34) -> feature 1 in ~131
+  /* v16: one wild in the base game -> no XW on any base reel (a rule, not a dial; kept as named constants for the page) */
+  const BASE_XW_OUTER = 0;
+  const BASE_XW_MID = 0;
   /* BASE_ROYAL — uniform multiplier on the J/Q/K/A base weights (fork dial).
      The paytable is fixed (CASH stays 6.8x) and an expanding wild adds more
      RTP per hit than a plain wild, so W + XW alone cannot put base RTP on 67%
      AND the hit rate on 30%: more low-paying royals lift the hit rate while
      diluting the RTP, which closes the gap. */
-  const BASE_ROYAL = pick('baseRoyal', 0.3, 1);             // v15 (was 1.2179): reels 1-3 lean on the themed symbols
+  const BASE_ROYAL = pick('baseRoyal', 0.36, 1);            // v16 (was 0.3; v15 was 1.2179): reels 1-3 lean on the themed symbols
 
   /* symbol mix of a non-expanded base cell (XW listed at 0: it never sits on
      a reel that did not expand) */
@@ -661,13 +725,27 @@
      FEATURE_WILD  W weight on the free-spin reels -> feature EV ~50x
      FEATURE_CROWN crown weight on the free-spin reels -> retrigger in ~1 of 8 features
      FEATURE_XW_OUTER / FEATURE_XW_MID  XW weight per cell, reels 1,3 / 2 (none on 0/4) */
-  const FEATURE_WILD = pick('featureWild', 3.2, BASE_WILD);      // v15 (was 1.815)
-  const FEATURE_CROWN = pick('featureCrown', 1.1, BASE_CROWN);   // v15 (was 0.894): ~1 in 7 features retrigger
-  const FEATURE_XW_OUTER = pick('featureXwOuter', 1.14, BASE_XW_OUTER);   // v15 (was 0.6)
-  const FEATURE_XW_MID = pick('featureXwMid', 0.2, BASE_XW_MID);
+  /* v16: the free-spin reels draw NO plain W (rule): their one wild is the XW, drawn per cell with the per-reel
+     weights FEATURE_XW_OUTER (reels 1, 3) / FEATURE_XW_MID (shared reel 2), and it always expands.
+     FEATURE_LOW multiplies the four low themed symbols (KEY, STUD, BANDANA, CASH) on the free-spin reels (a v16
+     tuning lever). Explored and left at 1: fewer low symbols also raise the XW and crown SHARE of a cell (their
+     weights are absolute), so it moves the average far more than the shape. The shape comes from FEATURE_CROWN.
+     v16 fix round 2: FEATURE_HIGH multiplies the three high themed symbols (RING, BLADE, BOTTLE) on the free-spin
+     reels. With the brief's p99 >= ~500x restored (CALIBRATION.md v16 fix round 2), fewer high symbols plus a few
+     more low ones put more of each free spin's pay into small line hits (fewer dead spins than fix round 1) while
+     the retrigger rate (FEATURE_CROWN) carries the top end. */
+  const FEATURE_WILD = 0;
+  const FEATURE_CROWN = pick('featureCrown', 2.86, BASE_CROWN);  // v16 fix round 2 (fr1 2.65, v15 1.1): retriggers carry the p99 >= 500x top end
+  const FEATURE_XW_OUTER = pick('featureXwOuter', 0.31, 0.6);   // v16 fix round 2 (fr1 0.46; v15 1.14 XW + W 3.2): the only free-spin wild
+  const FEATURE_XW_MID = pick('featureXwMid', 0.2, 0.2);        // v16 fix round 2 (fr1 0.3); stays below reels 1, 3
+  const FEATURE_LOW = pick('featureLow', 1.12, 1);              // v16 fix round 2 (fr1 1): a few more small line hits
+  const FEATURE_HIGH = pick('featureHigh', 0.59, 1);            // v16 fix round 2 (new; fr1 = 1): fewer RING/BLADE/BOTTLE
   const FEATURE_WEIGHTS = Object.assign({}, WEIGHTS,
     { J: 0, Q: 0, K: 0, A: 0, W: FEATURE_WILD, XW: 0, CROWN: FEATURE_CROWN }, T.featureWeights || {});
+  for (const s of ['KEY', 'STUD', 'BANDANA', 'CASH']) if (!(T.featureWeights && T.featureWeights[s] !== undefined)) FEATURE_WEIGHTS[s] = Math.round(WEIGHTS[s] * FEATURE_LOW * 1e6) / 1e6;
+  for (const s of ['RING', 'BLADE', 'BOTTLE']) if (!(T.featureWeights && T.featureWeights[s] !== undefined)) FEATURE_WEIGHTS[s] = Math.round(WEIGHTS[s] * FEATURE_HIGH * 1e6) / 1e6;
   FEATURE_WEIGHTS.XW = 0;
+  FEATURE_WEIGHTS.W = 0;                            // v16 rule: no plain wild in free spins
   for (const s of ROYALS) FEATURE_WEIGHTS[s] = 0;   // rule, not a dial
 
   /* per-reel XW weights and full per-reel draw tables (symbol mix + XW) */
@@ -689,11 +767,11 @@
   const FEATURE_REEL_WEIGHTS = reelWeights(FEATURE_WEIGHTS, XW_WEIGHTS.feature);
 
   /* Not dials (kept exactly as specified): */
-  const COPY_P = T.copyP !== undefined ? T.copyP : 0.0308;   // copy roll on a double-miss (v15: was 1/9) -> split 1 in 42.7
-  const COPY_P_FREE = T.copyPFree !== undefined ? T.copyPFree : 2 / 9;   // free spins: 2/9 (v14 value, kept explicit in v15)
+  const COPY_P = T.copyP !== undefined ? T.copyP : 0.03185;  // copy roll on a copy screen (v16 fix round 2: 0.0319 -> 0.03185, RTP back to ~96.0 under the new free spins; fix round 1: 0.0328 -> 0.0319, the refined lock pays ~0.7pp more; v15 0.0308; v14 1/9) -> split 1 in ~42.4
+  const COPY_P_FREE = T.copyPFree !== undefined ? T.copyPFree : 0.122;   // free spins: 0.122 (v16 fix round 2; fr1 0.15; v15 2/9): spikier feature, p99 >= 500x
   const FREE_SPINS = 10;
   const RETRIGGER_SPINS = 10;                                // v14: 3+ crowns on a free spin add 10
-  const MAX_FREE_SPINS = 1000;                               // loop guard only (the 3500x cap ends a round long before)
+  const MAX_FREE_SPINS = 1000;                               // loop guard (v16: reached by about 1 feature in a million; CALIBRATION.md v16)
   const MAX_PER_REEL = { W: 1, CROWN: 1 };                   // v14: at most one W and one crown per reel
   const CAP = 3500;
   const LINES = [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [2, 1, 0]];
@@ -774,6 +852,53 @@
   }
   const cloneGrid = (g) => g.map((col) => col.slice());
   const isXwCol = (col) => col[0] === XW && col[1] === XW && col[2] === XW;
+
+  /* v16 near-miss lock. Two cells "match" when neither is a crown and they are the same pay symbol, a pay symbol
+     and a wild, or two wilds (W / XW). A line is a near miss when EXACTLY ONE of its three cell pairs matches (a
+     second matching pair means a wild bridges two different symbols: no lock; three = a win, never on a copy
+     screen) and the third cell sits on a reel the copy changes (not reel 2). Returns hold[reel][row] and the
+     near-miss list { board, line, cells: [[reel,row],[reel,row]] } in board / line order. */
+  const matchPair = (a, b) => a !== SCATTER && b !== SCATTER && (isWild(a) || isWild(b) || a === b);
+  const PAIRS = [[0, 1, 2], [0, 2, 1], [1, 2, 0]];      // [i, j, third] positions on a line
+  function nearMisses(g) {
+    const hold = [[false, false, false], [false, false, false], [false, false, false], [false, false, false], [false, false, false]];
+    const list = [];
+    for (const board of ['L', 'R']) {
+      const reels = BOARDS[board];
+      for (let li = 0; li < LINES.length; li++) {
+        const rows = LINES[li];
+        const sy = [g[reels[0]][rows[0]], g[reels[1]][rows[1]], g[reels[2]][rows[2]]];
+        let hit = null, n = 0;
+        for (const p of PAIRS) if (matchPair(sy[p[0]], sy[p[1]])) { n++; hit = p; }
+        if (n !== 1 || reels[hit[2]] === 2) continue;
+        /* v16 fix round 1: a pair of an OUTER cell (reel 0/4) and a reel-2 cell needs no lock when the copy keeps it
+           by itself: (a) same row: the outer cell takes that very reel-2 symbol; (b) the reel-2 cell in the outer
+           cell's row is a wild: the outer cell becomes that wild, which still matches its partner (and a lock must
+           never stop a centre wild being copied out). Such a pair is not held, so the outer cell is copied. */
+        const ia = reels[hit[0]] === 2 ? hit[1] : reels[hit[1]] === 2 ? hit[0] : -1;
+        if (ia >= 0 && (reels[ia] === 0 || reels[ia] === 4) &&
+            (rows[hit[0]] === rows[hit[1]] || isWild(g[2][rows[ia]]))) continue;
+        const cells = [[reels[hit[0]], rows[hit[0]]], [reels[hit[1]], rows[hit[1]]]];
+        for (const [r, y] of cells) hold[r][y] = true;
+        list.push({ board, line: li, cells });
+      }
+    }
+    return { hold, list };
+  }
+
+  /* respin the unlocked cells of one reel (reels 1 / 3 of a copy). held[y] = keep row y. Same draw order and law as
+     spinReel when nothing is held: unlocked cells are drawn iid from the table, any drawn XW expands the reel, a
+     column breaking one W / one crown is redrawn (unlocked cells only). */
+  function respinHeld(rng, table, col0, held) {
+    if (held[0] && held[1] && held[2]) return { col: col0.slice(), xwRows: [] };
+    for (;;) {
+      const col = [0, 1, 2].map((y) => (held[y] ? col0[y] : draw(rng, table)));
+      const xwRows = [];
+      for (let y = 0; y < 3; y++) if (!held[y] && col[y] === XW) xwRows.push(y);
+      if (xwRows.length) return { col: [XW, XW, XW], xwRows };
+      if (!overMax(col)) return { col, xwRows };
+    }
+  }
 
   /* ---------------------------------------------------------------- scoring
      A line pays when its 3 cells are one pay symbol, or that symbol + wilds
@@ -881,7 +1006,7 @@
           grid[r] = [XW, XW, XW];
           land.expanded.push(r); land.xwLand.push([r, y]);
         }
-        if (!force.copy || tries > 500 || scoreGrid(grid).total === 0) break;   // QA: need a double-miss
+        if (!force.copy || tries > 500 || (scoreGrid(grid).total === 0 && (force.crowns || crownCells(grid).length < 3))) break;   // QA: need a copy screen
       }
       land.expanded.sort((a, b) => a - b);
       land.xwLand.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -897,20 +1022,42 @@
     let finalStep = baseStep;
     let copied = false;
 
-    /* 4-5. both boards missed -> roll 1/9 for the copy (no chain) */
-    /* the copy (base game and, v14, free spins): reel 2 as it stands onto reels 0 and 4, respin reels 1 and 3 once */
+    /* 4-5. both boards missed (and fewer than 3 crowns show, v16) -> roll COPY_P for the copy (no chain) */
+    /* the copy (base game and, v14, free spins): reel 2 as it stands onto reels 0 and 4, respin reels 1 and 3 once.
+       v16: near-miss pairs are locked first (nearMisses): a locked reel-0/4 cell keeps its symbol, a locked
+       reel-1/3 cell is not respun. A copied XW reel 2 covers reels 0/4 whole; an XW reel 1/3 with a lock holds whole. */
     const copyOf = (grid0, tables, extra) => {
       const g = cloneGrid(grid0);
-      g[0] = g[2].slice();               // reel 2 as it stands, incl. an expanded XW column
-      g[4] = g[2].slice();
-      const l1 = spinReels(rng, g, [1, 3], tables);
+      const nm = NEAR_MISS_LOCK ? nearMisses(grid0) : { hold: [0, 1, 2, 3, 4].map(() => [false, false, false]), list: [] };
+      const hold = nm.hold;
+      let nearMiss = nm.list;
+      if (isXwCol(grid0[2])) {           // an expanding wild is always a whole reel: it is copied whole
+        hold[0] = [false, false, false]; hold[4] = [false, false, false];
+        nearMiss = nearMiss.filter((m) => !m.cells.some(([r]) => r === 0 || r === 4));
+      }
+      for (const r of [1, 3]) if (isXwCol(grid0[r]) && hold[r].some(Boolean)) hold[r] = [true, true, true];
+      for (const r of [0, 4]) for (let y = 0; y < 3; y++) if (!hold[r][y]) g[r][y] = grid0[2][y];   // reel 2 as it stands
+      const xwLand = [], expanded = [], spun = [];
+      for (const r of [1, 3]) {
+        if (hold[r][0] && hold[r][1] && hold[r][2]) continue;
+        spun.push(r);
+        const s = respinHeld(rng, tables[r], grid0[r], hold[r]);
+        g[r] = s.col;
+        if (s.xwRows.length) { expanded.push(r); for (const y of s.xwRows) xwLand.push([r, y]); }
+      }
+      /* locked = every cell that held its symbol for a near miss (reel-2 partners included: reel 2 never changes);
+         an expanded reel 1/3 that drew a fresh XW is no longer held (the expansion covers it) */
+      const locked = [];
+      for (const r of [0, 1, 3, 4]) for (let y = 0; y < 3; y++) if (hold[r][y] && expanded.indexOf(r) < 0) locked.push([r, y]);
+      for (const m of nearMiss) for (const [r, y] of m.cells) if (r === 2 && !locked.some((c) => c[0] === 2 && c[1] === y)) locked.push([2, y]);
+      locked.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
       const s1 = scoreGrid(g);
-      const st = Object.assign({ kind: 'copy', grid: cloneGrid(g), spun: [1, 3], copiedFrom: 2,
-                                 xwLand: l1.xwLand, expanded: l1.expanded, wins: s1.wins, stepWinRaw: s1.total }, extra || {});
+      const st = Object.assign({ kind: 'copy', grid: cloneGrid(g), spun, copiedFrom: 2, locked, nearMiss,
+                                 xwLand, expanded, wins: s1.wins, stepWinRaw: s1.total }, extra || {});
       if (isXwCol(g[2])) st.copiedXW = [0, 4];
       return { g, st };
     };
-    if (s0.total === 0) {
+    if (s0.total === 0 && crownCells(grid).length < 3) {   // v16: never clone over a trigger (forced copies too)
       const roll = rng();
       /* QA: force.crowns or force.xw without force.copy skips the copy roll, so the forced grid is the one that
          stands (a natural copy would overwrite a forced XW on reel 0/4). force.copy still copies. */
@@ -948,7 +1095,7 @@
         /* 7. the cap ends the round: the remaining free spins are not played */
         if (capReached) break;
         let last = step, lastGrid = g;
-        if (s.total === 0 && rng() < COPY_P_FREE) {
+        if (s.total === 0 && crownCells(g).length < 3 && rng() < COPY_P_FREE) {   // v16: never clone over a retrigger
           const { g: g2, st: c } = copyOf(g, FEATURE_TABLES, { feature: true, index: i, total });
           push(c);
           featureRaw = round2(featureRaw + c.stepWinRaw);
@@ -1008,12 +1155,17 @@
     MAX_PER_REEL, WILD_REELS, PAY_STEP,
     XW_WEIGHTS, BASE_REEL_WEIGHTS, FEATURE_REEL_WEIGHTS, XW_EXPAND_P,
     DIALS: { PAY_SCALE, BASE_WILD, BASE_CROWN, BASE_ROYAL, BASE_XW_OUTER, BASE_XW_MID,
-             FEATURE_WILD, FEATURE_CROWN, FEATURE_XW_OUTER, FEATURE_XW_MID, asWritten: AS_WRITTEN },
-    TARGETS: { rtp: 0.960, baseRtp: 0.437, featureRtp: 0.523, hitRate: 0.257,
-               copyOfDoubleMiss: 0.0308, featureRate: 1 / 129.4, featureEv: 67.7, retriggerShare: 0.145, cap: 3500 },
+             FEATURE_WILD, FEATURE_CROWN, FEATURE_XW_OUTER, FEATURE_XW_MID, FEATURE_LOW, FEATURE_HIGH, asWritten: AS_WRITTEN },
+    /* v16 fix round 2: the 240M-round mc.mjs confirm (seed 20261024; CALIBRATION.md v16 fix round 2). baseRtp = base
+       step + copy. spinsAtLeast50 / featureUnder15 / dead7of10 = features of 50+ free spins, ending below 15x, with 7+
+       paying-nothing spins in their first 10 (the page's rules text reads them). */
+    TARGETS: { rtp: 0.960, baseRtp: 0.4360, baseStepRtp: 0.2056, copyRtp: 0.2300, copyOneIn: 42.4, copyAvg: 9.76,
+               featureRtp: 0.5245, hitRate: 0.275, copyOfDoubleMiss: 0.03185, featureRate: 1 / 130.9, featureEv: 68.7,
+               featureMedian: 35.2, featureP99: 505, retriggerShare: 0.508, freeSpinsPerFeature: 31.8, spinsAtLeast50: 0.180,
+               featureUnder15: 0.181, dead7of10: 0.439, cap: 3500 },
     RTP_LABEL: '96.0%',
     BETS_CENTS, winCents,
-    makeRng, makeRngWide, playRound, scoreGrid, scoreLine, crownCells,
+    makeRng, makeRngWide, playRound, scoreGrid, scoreLine, crownCells, nearMisses,
   };
 
   root.SaltPimp = api;
@@ -1098,10 +1250,18 @@ const SKIN = {
     // stage, the counter is smaller. count = ms the counter rolls (turbo x0.5), hold = ms it stays up after.
     // Total Win (end of the free spins, on the Free Spins splash): the amount where the "10" was, TOTAL WIN where
     // FREE SPINS was (the art's own line, read off Congrats.png: rows 366-439 of 441); count = roll ms (turbo x0.5)
+    // v16 fix round 2: amount tiers (x bet). Below big: quiet = the "FREE SPINS COMPLETE" line in place of the
+    // Congratulations art; tier = the box the MEGA / EPIC / LEGENDARY WIN word slams into (over the Congratulations
+    // lines, which make way). roll: ms = min + perDecade * log10(1 + x / ref), capped at max (turbo x0.5): ~1.4 s at
+    // 3x, ~2.0 s at 15x, ~2.7 s at 50x, ~3.6 s at 250x, ~4.5 s at 1000x. raysPad = px the EPIC+ rays reach past the
+    // frame [L, P]; epicHold = ms an EPIC+ total sits before COLLECT comes in (normal speed only).
     fsTotal: {
-      L: { amount: [380, 466, 1160, 158], title: [548, 626, 834, 92] },
-      P: { amount: [222, 834, 636, 130], title: [200, 966, 680, 76] },
-      count: 2200,
+      L: { amount: [380, 466, 1160, 158], title: [548, 626, 834, 92], quiet: [500, 330, 920, 110], tier: [400, 262, 1120, 190] },
+      P: { amount: [222, 834, 636, 130], title: [200, 966, 680, 76], quiet: [292, 712, 496, 90], tier: [292, 676, 496, 150] },   // P boxes kept inside the frame's croc borders
+      tiers: { big: 15, mega: 50, epic: 250, legend: 1000 },
+      words: { mega: 'MEGA WIN', epic: 'EPIC WIN', legend: 'LEGENDARY WIN' },
+      roll: { min: 1100, perDecade: 1400, ref: 4, max: 6000 },
+      raysPad: [260, 200], epicHold: 900,
     },
     win: {
       big: 15, mega: 50,
@@ -1714,7 +1874,11 @@ const FILL = { base: wArr(SP.WEIGHTS), free: wArr(SP.FEATURE_WEIGHTS || SP.WEIGH
 // v15: per-reel filler (the engine's per-reel tables, XW left out): the outer base reels carry only royals + crowns,
 // so their moving strips must not flash themed symbols that can never land there
 const noXW = (W) => W && Object.assign({}, W, { XW: 0 });
-const FILL_REEL = { base: (SP.BASE_REEL_WEIGHTS || []).map((W) => wArr(noXW(W))), free: (SP.FEATURE_REEL_WEIGHTS || []).map((W) => wArr(noXW(W))) };
+// v16: the base game has ONE wild (plain W, never XW); in free spins every wild is the expanding one and LANDS with
+// the plain wild's art (then expands). So a free-spin filler strip shows the W art at the XW weight (reels 2-4 only)
+// and never the small XW card; a base strip never shows XW art.
+const fsWildArt = (W) => W && Object.assign({}, W, { W: (W.W || 0) + (W.XW || 0), XW: 0 });
+const FILL_REEL = { base: (SP.BASE_REEL_WEIGHTS || []).map((W) => wArr(noXW(W))), free: (SP.FEATURE_REEL_WEIGHTS || []).map((W) => wArr(fsWildArt(W))) };
 let fillSet = 'base';
 function visualSym(reel) {
   const arr = (FILL_REEL[fillSet] && FILL_REEL[fillSet][reel]) || FILL[fillSet] || FILL.base;
@@ -1886,11 +2050,15 @@ function anticOff(r) {
   if (CALM_FX()) { a.el.remove(); return; }
   a.el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, fill: 'forwards' }).finished.catch(() => {}).then(() => a.el.remove());
 }
+/* v16 fix round 1: a feature now lasts ~26 free spins on average (a 1 in 7 runs 50+), most of them paying nothing, so
+   the FREE-SPIN cadence is quicker than the base game's at normal speed: reels stop sooner (FS_PACE) and the scatter
+   tease is shorter. Turbo is unchanged (already quick). Nothing about the outcome changes. */
+const FS_PACE = { base: 600, step: 125, antic: 0.6 };
 async function rollSet(grid, reels, opts) {
-  const turbo = speedMode === 'turbo';
-  const base = turbo ? 340 : 820, step = turbo ? 70 : 165;
+  const turbo = speedMode === 'turbo', fsPace = fillSet === 'free' && !turbo;
+  const base = turbo ? 340 : fsPace ? FS_PACE.base : 820, step = turbo ? 70 : fsPace ? FS_PACE.step : 165;
   const plan = anticPlan(grid, reels, !(opts && opts.noScatterAntic));
-  const extra = (a) => (a ? SKIN.antic[a] * (turbo ? SKIN.antic.turbo : 1) : 0);
+  const extra = (a) => (a ? SKIN.antic[a] * (turbo ? SKIN.antic.turbo : fsPace ? FS_PACE.antic : 1) : 0);
   // every reel keeps its normal spin (the same curve as without anticipation); waiting adds a hold at full speed.
   // A waited-on reel stops SKIN.antic ms after the reel before it instead of `step` ms, and every reel after it
   // holds the same extra time, so nothing ever spins slowly while it waits.
@@ -1927,9 +2095,10 @@ const NFS = SP.FREE_SPINS || 10;
 // prefers-reduced-motion (as shake() and the croc idle loop): no grow / flash / fly-out, the end state shows at once
 const CALM_FX = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 const xwEls = [null, null, null, null, null];          // the .xwcol over each reel (null = none)
-// a cosmetic symbol for the cells around a drawn XW (never a scatter, an XW or, in free spins, a royal)
-function cosmeticSym() {
-  for (let i = 0; i < 50; i++) { const s = visualSym(); if (s !== SP.SCATTER && s !== XWID) return s; }
+// a cosmetic symbol for the cells around a drawn XW (never a scatter, a wild or, in free spins, a royal); drawn from
+// reel r's own filler when given (v15: the outer base reels carry only royals)
+function cosmeticSym(r) {
+  for (let i = 0; i < 50; i++) { const s = visualSym(r); if (s !== SP.SCATTER && s !== XWID && s !== SP.WILD) return s; }
   return 'KEY';
 }
 function xwClear(r) { if (xwEls[r]) { xwEls[r].remove(); xwEls[r] = null; } }
@@ -2010,6 +2179,7 @@ function cellCentre(c) {
 // LJ fork: a wild lands. Each Levee Toll Coin wild (W) or croc Expanding Wild (XW) on a reel that is just
 // stopping gets a glow hit: the symbol itself flares (brightness + coloured glow) and fades back. Nothing moves or
 // scales, the symbol stays exactly where and how big it is. Look: SKIN.wildLand.
+// v16: in free spins the wild lands as the plain W (that is its art) and then expands (playOne / copyAnim).
 function wildLand(r, col) {
   const ks = [0, 1, 2].filter((k) => col[k] === SP.WILD || col[k] === XWID);
   if (!ks.length) return;
@@ -2092,7 +2262,7 @@ async function featureIntro() {
   fillSet = 'free';
   const touched = [...new Set(hits.map(([r]) => r))];
   touched.forEach((r) => {
-    setReel(r, state.grid[r].map((s) => (ROYAL.has(s) ? cosmeticSym() : s)));
+    setReel(r, state.grid[r].map((s) => (ROYAL.has(s) ? cosmeticSym(r) : s)));
     [0, 1, 2].forEach((k) => { const c = visCell(r, k); if (c && hits.some(([hr, hk]) => hr === r && hk === k)) c.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360 }); });
   });
   dbg(`feature intro: ${hits.length} royal cell(s) stripped from the screen` + (hits.length ? ' (' + hits.map(([r, k]) => `r${r}·row${k}`).join(' ') + ')' : ''));
@@ -2123,17 +2293,26 @@ function dbgStep(st, round, i) {
   if (st.kind === 'base') {
     const next = round.steps[i + 1];
     const qf = round.qaForce;
+    const crowns = st.grid.flat().filter((c) => c === SP.SCATTER).length;
     const copy = st.stepWinRaw > 0 ? 'copy n/a (base paid)' : next && next.kind === 'copy' ? 'copy FIRED'
+      : crowns >= 3 ? `copy BLOCKED (${crowns} scatters: no Reel Split over a trigger)`
       : qf && qf.copy === undefined && (qf.crowns || (qf.xw && qf.xw.length)) ? 'copy roll skipped (QA force)'
       : 'copy not fired (double miss, roll lost)';
     dbg(`base: ${xw} · ${pay} · ${copy}`);
   } else if (st.kind === 'copy') {
-    dbg(`copy: reels 0,4 = reel 2${st.copiedXW ? ' (copied XW column on ' + st.copiedXW.join(',') + ')' : ''}; respin 1,3 · ${xw} · ${pay}`);
+    const lk = st.locked || [], nm = st.nearMiss || [];
+    dbg(`copy${st.feature ? ' (free spin ' + st.index + ')' : ''}: ` +
+      (nm.length ? `${nm.length} near miss(es) locked ${lk.map(([r, k]) => `r${r}·row${k}`).join(' ')}` : 'no near miss, nothing locked') +
+      ` · reels 0,4 = reel 2 on unlocked cells${st.copiedXW ? ' (copied XW column on ' + st.copiedXW.join(',') + ')' : ''}` +
+      ` · respin unlocked cells of ${reelList(st.spun)} · ${xw} · ${pay}`);
   } else {
     const royals = [];
     st.grid.forEach((col, r) => col.forEach((s, k) => { if (ROYAL.has(s)) royals.push(`r${r}·row${k}=${s}`); }));
-    dbg(`free ${st.index}/${NFS}: ` + (royals.length ? 'ROYALS ON GRID ' + royals.join(' ') : 'no royals on grid OK') +
-      ` · spun ${reelList(st.spun)} · ${xw} · ${pay}`, royals.length > 0);
+    const plainW = st.grid.flat().includes(SP.WILD);          // v16: a free-spin grid never holds a plain W
+    const fc = st.grid.flat().filter((c) => c === SP.SCATTER).length;
+    dbg(`free ${st.index}/${st.total || NFS}: ` + (royals.length ? 'ROYALS ON GRID ' + royals.join(' ') : 'no royals on grid OK') +
+      (plainW ? ' · PLAIN W ON A FREE-SPIN GRID' : '') +
+      ` · spun ${reelList(st.spun)} · ${xw} · ${pay}` + (!st.stepWinRaw && fc >= 3 ? ` · copy BLOCKED (${fc} scatters)` : ''), royals.length > 0 || plainW);
   }
   if (st.crowns && st.crowns.length >= 3)
     dbg(`FEATURE: ${st.crowns.length} scatters -> ${NFS} free spins, all reels spin, royalsCleared=${!!round.royalsCleared}`);
@@ -2196,7 +2375,14 @@ function hud() {
 /* v14: reels 0 and 4 draw no wild, so a base spin alone can never show W-W-W on a line: it takes a copy (reel 2's
    wilds copied onto 0 and 4) or the free spins. The footer shows rounds that see a W-W-W line, copy and feature
    included, MEASURED (10M rounds of the v15 engine, 2026-10-20: 1 in 844; v14 was 1 in 1 629). Re-measure on a retune. */
-const MAXLINE_ODDS = '1:844';
+/* v16 (2026-10-22): re-measured on the v16 engine with ref/qa-live/maxline.cjs (20M rounds, 12 procs, seed 4242):
+   13 246 rounds saw a W-W-W line = 1 in 1 510 (the first such step: 13 068 in a base Reel Split, 178 in free spins,
+   0 in a base step). Rarer than v15 because the base game no longer has the XW, the free spins no plain W, and the
+   split rolls a little less often on a no-win screen.
+   v16 fix round 1 (engine 7bea848e…): re-measured the same way (20M rounds, seed 4242): 14 182 rounds = 1 in 1 410
+   (14 006 in a base Reel Split, 176 in free spins, 0 in a base step). More than before because a lock no longer
+   stops a centre-reel wild being copied onto the outer reels. */
+const MAXLINE_ODDS = '1:1420';   // v16 fix round 2: re-measured on the fr2 engine (rounds with any W/XW-only line, any step: 24M rounds, seed 4242 -> 1 in 1,422)
 function clock() { const d = new Date(); setText('fClock', String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')); }
 setInterval(clock, 10000); clock();
 
@@ -2277,6 +2463,7 @@ const sfx = (() => {
     start() { if (soundOn) blip(420, 0.12, 'sawtooth', 0.025); },
     win(big) { if (!soundOn) return; [523, 659, 784, big ? 1046 : 0].forEach((f, i) => f && blip(f, 0.22, 'triangle', 0.06, i * 0.09)); },
     copy() { if (!soundOn) return; for (let i = 0; i < 6; i++) blip(300 + i * 90, 0.08, 'sine', 0.05, i * 0.05); },
+    lock() { if (!soundOn) return; [660, 990, 1320].forEach((f, i) => blip(f, 0.1, 'square', 0.035, i * 0.07)); },   // v16: near misses lock
     crown() { if (!soundOn) return; [784, 988, 1175, 1568].forEach((f, i) => blip(f, 0.35, 'triangle', 0.07, i * 0.12)); },
     click() { if (soundOn) blip(900, 0.04, 'square', 0.02); },
     // LJ fork: a wild lands (a bright double hit; lower and longer for the croc)
@@ -2619,16 +2806,49 @@ async function winOut(art, L, P, kb, rb, gb) {
   spRoot.className = ''; spStage.textContent = '';
 }
 
-// the Free Spins end: the Free Spins splash (same frame, halo, dim and intro) with its text changed: the art's own
-// "Congratulations! you have won" lines, the feature win rolling up in place of the "10", TOTAL WIN in place of
-// FREE SPINS, and COLLECT on the button (the START plate with its lettering painted out). COLLECT (tap, Space, Enter
-// or the spin button; by itself in autoplay / hold-turbo) switches back to the base game look behind it.
-async function fsTotalSplash(amountC) {
-  const F = SPL.fs, T = SPL.fsTotal, turbo = speedMode === 'turbo';
+// the Free Spins end: the Free Spins splash (same frame, halo, dim and intro) with its text changed: the feature win
+// rolling up in place of the "10", TOTAL WIN in place of FREE SPINS, and COLLECT on the button (the START plate with
+// its lettering painted out). COLLECT (tap, Space, Enter or the spin button; by itself in autoplay / hold-turbo)
+// switches back to the base game look behind it.
+// v16 fix round 2: the show grows with the win (SPL.fsTotal.tiers, multiples of the bet). Below BIG (15x) it is a
+// quiet "FREE SPINS COMPLETE" with a short roll; from BIG the art's own "Congratulations! you have won" lines; as the
+// counter passes MEGA (50x), EPIC (250x) and LEGENDARY (1000x) the tier word slams in over them, each step louder:
+// MEGA = flash + shake, EPIC = rays and a wide glow behind the frame + a longer hold, LEGENDARY = a hotter palette,
+// the max shake and a spark fountain until COLLECT. The roll time grows with log(x) (SPL.fsTotal.roll); a tap still
+// skips it (and jumps straight to the final tier).
+const FS_TIER_ORDER = ['none', 'big', 'mega', 'epic', 'legend'];
+function fsTier(x) {
+  const t = SPL.fsTotal.tiers;
+  return x >= t.legend ? 'legend' : x >= t.epic ? 'epic' : x >= t.mega ? 'mega' : x >= t.big ? 'big' : 'none';
+}
+// fit a line of splash type to its box: measures the text itself (spText's scrollWidth test misses a centred
+// overflow, which spills out on both sides) and shrinks the font so the line sits inside the box
+function spFit(el, str) {
+  el.textContent = ''; el.style.fontSize = '';
+  const s = document.createElement('span'); s.textContent = str; el.appendChild(s);
+  const w = s.getBoundingClientRect().width, W = el.getBoundingClientRect().width;
+  if (W > 0 && w > W * 0.96) el.style.fontSize = parseFloat(getComputedStyle(el).fontSize) * W * 0.94 / w + 'px';
+}
+function fsRollMs(x) {                         // ms the Total Win amount rolls for a feature of x times the bet
+  const R = SPL.fsTotal.roll;
+  return Math.min(R.max, R.min + R.perDecade * Math.log10(1 + Math.max(0, x) / R.ref));
+}
+async function fsTotalSplash(amountC, x) {
+  const F = SPL.fs, T = SPL.fsTotal, turbo = speedMode === 'turbo', calm = CALM_FX();
+  if (x == null) x = amountC / Math.max(1, toC(bet));
+  const top = fsTier(x), rank = (t) => FS_TIER_ORDER.indexOf(t);
   spOpen();
-  const [gb] = spBox(grow(F.L.frame, -F.glow), grow(F.P.frame, -F.glow), 'sp-halo');
+  const [gb, gi] = spBox(grow(F.L.frame, -F.glow), grow(F.P.frame, -F.glow), 'sp-halo');
   const [fb, fi] = spBox(F.L.frame, F.P.frame, 'sp-breathe'); spImg(fi, 'fs-frame', true);
-  const [cb, ci] = spBox(F.L.congrats, F.P.congrats, 'sp-congrats sp-crop'); spImg(ci, 'fs-congrats', true);
+  // the line over the amount: below BIG a plain "FREE SPINS COMPLETE"; from BIG the art's Congratulations lines
+  let cb = null;
+  if (top === 'none') {
+    const q = spBox(T.L.quiet, T.P.quiet, 'sp-text sp-quiet'); cb = q[0]; spFit(q[1], 'FREE SPINS COMPLETE');
+  } else {
+    const c = spBox(F.L.congrats, F.P.congrats, 'sp-congrats sp-crop'); cb = c[0]; spImg(c[1], 'fs-congrats', true);
+  }
+  // the tier word (MEGA / EPIC / LEGENDARY WIN): hidden until the counter passes its line
+  const [wb, wi] = spBox(T.L.tier, T.P.tier, 'sp-text sp-tier'); wb.style.visibility = 'hidden';
   const [ab, ai] = spBox(T.L.amount, T.P.amount, 'sp-text sp-amount');
   const [tb, ti] = spBox(T.L.title, T.P.title, 'sp-text sp-title'); ti.textContent = 'TOTAL WIN';
   const [bb, bi] = spBox(F.L.start, F.P.start, 'sp-start'); spImg(bi, 'fs-button', true);
@@ -2636,6 +2856,8 @@ async function fsTotalSplash(amountC) {
   spShine(bi, 'fs-button');
   bi.setAttribute('role', 'button'); bi.setAttribute('aria-label', 'Collect the free spins win');
   spText(ai, fmtSplash(0));
+  spRoot.dataset.fsTier = top;                 // QA: the tier this splash ends on (fsShown: the tier word on screen)
+  spRoot.dataset.fsShown = top === 'none' ? 'none' : 'big';
   sfx.crown();
   spAnim(gb, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'scale(1)' }], 700, 120, 'ease-out');
   spAnim(fb, POP(0.25), 560, 0);
@@ -2646,20 +2868,60 @@ async function fsTotalSplash(amountC) {
   // the amount rolls while TOTAL WIN slams in under it
   const title = spAnim(tb, [{ transform: 'scale(2.6)', opacity: 0 }, { transform: 'scale(.9)', opacity: 1, offset: 0.6 }, { transform: 'scale(1)', opacity: 1 }],
     420, 200, 'cubic-bezier(.4,0,.3,1)');
-  setTimeout(() => { if (spStage.contains(tb)) { shake('crown'); spSparks(tb, 18, 300); } }, CALM_FX() ? 0 : 450);
-  await spRoll(ai, ab, amountC, T.count * (turbo ? 0.5 : 1));
+  setTimeout(() => { if (spStage.contains(tb)) { if (top !== 'none') shake('crown'); spSparks(tb, top === 'none' ? 8 : 18, 300); } }, calm ? 0 : 450);
+  // tier steps while the counter rolls
+  let shown = rank(spRoot.dataset.fsShown), rays = null, raysIn = null, fountain = 0;
+  const step = (tier) => {
+    shown = rank(tier);
+    spRoot.dataset.fsShown = tier;
+    wi.className = 'sp-in sp-text sp-tier ' + tier;
+    spFit(wi, T.words[tier]);
+    wb.style.visibility = '';
+    if (cb.style.visibility !== 'hidden') {   // the Congratulations lines make room for the tier word
+      if (calm) cb.style.visibility = 'hidden';
+      else cb.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.25)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' })
+        .finished.catch(() => {}).then(() => { cb.style.visibility = 'hidden'; });
+    }
+    spAnim(wb, [{ transform: 'scale(2.8) rotate(-6deg)', opacity: 0 }, { transform: 'scale(.9) rotate(1deg)', opacity: 1, offset: 0.6 },
+      { transform: 'scale(1) rotate(0deg)', opacity: 1 }], 480, 0, 'cubic-bezier(.4,0,.3,1)');
+    const big = rank(tier) >= rank('epic');
+    spFlash(grow(T.L.tier, big ? 160 : 90), grow(T.P.tier, big ? 120 : 70), big ? 760 : 600);
+    setTimeout(() => spSparks(wb, big ? 46 : 28, big ? 640 : 460), calm ? 0 : 180);
+    shake(tier === 'legend' ? 'max' : 'mega'); sfx.crown(); sfx.win(true);
+    if (big && !rays) {                        // EPIC+: slow rays and a wide glow behind the frame
+      const r = spBox(grow(F.L.frame, T.raysPad[0]), grow(F.P.frame, T.raysPad[1]), 'sp-rays sp-fsrays'); rays = r[0]; raysIn = r[1];
+      const g = spBox(grow(F.L.frame, T.raysPad[0] * 0.5), grow(F.P.frame, T.raysPad[1] * 0.5), 'sp-glow');
+      spStage.insertBefore(g[0], spStage.firstChild); spStage.insertBefore(rays, spStage.firstChild);
+      spAnim(rays, [{ opacity: 0, transform: 'scale(.5) rotate(-40deg)' }, { opacity: 1, transform: 'scale(1) rotate(0deg)' }], 900, 0, 'ease-out');
+      spAnim(g[0], [{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'scale(1)' }], 700, 0, 'ease-out');
+    }
+    if (tier === 'legend') {                   // LEGENDARY: hotter halo + rays, and a spark fountain until COLLECT
+      gi.classList.add('hot'); if (raysIn) raysIn.classList.add('hot');   // the styled .sp-in children, not the boxes
+      if (!calm && !fountain) fountain = setInterval(() => { if (!spStage.contains(ab)) { clearInterval(fountain); return; } spSparks(ab, 10, 520); spSparks(wb, 6, 420); }, 380);
+    }
+  };
+  // a tap that skips the roll jumps straight to the final tier: one step, not three at once
+  const lines = ['mega', 'epic', 'legend'].filter((t) => rank(t) <= rank(top)).map((t) => [t, winC(T.tiers[t])]);
+  await spRoll(ai, ab, amountC, fsRollMs(x) * (turbo ? 0.5 : 1), (v) => {
+    let to = null;
+    for (const [t, c] of lines) if (v >= c && rank(t) > shown) to = t;
+    if (to) step(to);
+  });
   sfx.win(true);
   await title;
+  if (rank(top) >= rank('epic') && !turbo && !calm) await sleep(T.epicHold);   // let the big one sit before COLLECT
   bb.style.visibility = '';
   await spAnim(bb, [{ transform: 'translateY(80px) scale(.4)', opacity: 0 }, { transform: 'translateY(-10px) scale(1.08)', opacity: 1, offset: 0.65 },
     { transform: 'translateY(0) scale(1)', opacity: 1 }], 460, 0);
   spRoot.classList.add('idle');
   const auto = debugAuto ? 400 : (autoplay || holdTurbo) ? F.autoStart : 0;
   await spWait(auto, (e) => (e && !bb.contains(e.target) ? false : undefined));   // a tap counts on COLLECT only
+  if (fountain) clearInterval(fountain);
   sfx.click();
   fsLook(false);                               // behind the splash: back to the base game background + reel frame
-  if (!CALM_FX()) await bb.animate([{ transform: 'scale(1)' }, { transform: 'scale(.9)' }, { transform: 'scale(1)' }], { duration: 140 }).finished.catch(() => {});
+  if (!calm) await bb.animate([{ transform: 'scale(1)' }, { transform: 'scale(.9)' }, { transform: 'scale(1)' }], { duration: 140 }).finished.catch(() => {});
   await spClose();
+  delete spRoot.dataset.fsTier; delete spRoot.dataset.fsShown;
 }
 
 // the free spins look: the background and the reel frame crossfade to the purple free spins versions (a copy of the
@@ -2706,29 +2968,144 @@ function fsPanelShow(on) {
   }
 }
 
+/* v16 Reel Split (the engine's copy step): near-miss lock, then the copy, then the respin of the unlocked cells.
+   step.nearMiss (the locked pairs) says which cells HOLD: each gets a gold frame and a HELD tag (.lockcell / .locktag
+   in #fx) for the whole split, and a held cell never moves. Reels 0 / 4: every UNLOCKED cell takes reel 2's symbol in
+   its row (a ghost flies over, per cell); a held one keeps its own. Reels 1 / 3 (step.spun: [1, 3], [1], [3] or []):
+   only the unlocked cells respin, each in its own clipped mini-reel over its cell (.mreel), the held cells stay still
+   beside them. A wild drawn on a respun cell in free spins lands as the plain W and is then expanded by playOne
+   (step.expanded), like any free-spin wild. Quick-stop / turbo: the mini-reels join activeAnims (quickStop finishes
+   them) and every wait goes through sleep(). Works the same in both views (all of it is in board px). */
+function heldCells(step) {
+  const out = [];
+  const add = (r, k) => { if (!out.some(([a, b]) => a === r && b === k)) out.push([r, k]); };
+  // nearMiss = the pairs as locked BEFORE the respin (step.locked leaves out a reel that then expanded)
+  if (step.nearMiss) step.nearMiss.forEach((m) => m.cells.forEach(([r, k]) => add(r, k)));
+  (step.locked || []).forEach(([r, k]) => add(r, k));
+  return out.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+function lockMarks(cells) {
+  const calm = CALM_FX();
+  return cells.map(([r, k], i) => {
+    const [x, y, w, h] = cellRect(r, k);
+    const f = document.createElement('div'); f.className = 'lockcell';
+    f.dataset.cell = r + ',' + k;
+    Object.assign(f.style, { left: x + 6 + 'px', top: y + 6 + 'px', width: w - 12 + 'px', height: h - 12 + 'px' });
+    const t = document.createElement('div'); t.className = 'locktag'; t.textContent = 'HELD';
+    f.appendChild(t); fx.appendChild(f);
+    if (!calm) {
+      f.animate([{ transform: 'scale(1.25)', opacity: 0 }, { transform: 'scale(.96)', opacity: 1, offset: 0.6 }, { transform: 'scale(1)', opacity: 1 }],
+        { duration: 340, delay: i * 60, easing: 'ease-out', fill: 'backwards' });
+      const c = visCell(r, k);
+      if (c) c.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.7)' }, { filter: 'brightness(1)' }], { duration: 560, delay: i * 60 });
+    }
+    return f;
+  });
+}
+// one unlocked cell respins in its own window (the cell's rect, clipped): a short strip from the symbol it showed to
+// the one it lands on. The real cell is hidden meanwhile and set to the landing symbol before the window goes.
+function miniSpin(r, k, from, to, dur) {
+  return new Promise((resolve) => {
+    const c = visCell(r, k);
+    const [x, y, w, h] = cellRect(r, k);
+    const win = document.createElement('div'); win.className = 'mreel'; win.dataset.cell = r + ',' + k;
+    Object.assign(win.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+    const st = document.createElement('div'); st.className = 'strip';
+    const list = [to, ...Array.from({ length: Math.max(3, Math.round(dur / 70)) }, () => visualSym(r)), from];
+    list.forEach((s, i) => {
+      const d = makeCell(s, r); setCell(d, s, r, false, k);
+      d.style.left = CX[r] - x - 128 + 'px'; d.style.top = CY[k] - y - 128 + i * h + 'px';
+      st.appendChild(d);
+    });
+    win.appendChild(st); $('reels').appendChild(win);
+    if (c) c.classList.add('stripped');
+    const travel = (list.length - 1) * h, ov = speedMode === 'turbo' ? 10 : 18;
+    st.style.transform = `translateY(${-travel}px)`;
+    const anim = st.animate([
+      { transform: `translateY(${-travel}px)`, easing: 'ease-out' },
+      { transform: `translateY(${-travel - 14}px)`, offset: 0.08, easing: 'cubic-bezier(.45,0,.75,1)' },
+      { transform: `translateY(${ov}px)`, offset: 0.86, easing: 'cubic-bezier(.2,.6,.35,1)' },
+      { transform: 'translateY(0px)' },
+    ], { duration: dur, fill: 'forwards' });
+    activeAnims.push(anim);
+    const blurOn = setTimeout(() => st.classList.add('rolling'), dur * 0.1);
+    const blurOff = setTimeout(() => st.classList.remove('rolling'), dur * 0.78);
+    anim.onfinish = () => {
+      clearTimeout(blurOn); clearTimeout(blurOff);
+      if (c) {                                   // shown at once (no .25 s opacity fade back in)
+        setCell(c, to, r, false, k);
+        c.style.transition = 'none'; c.classList.remove('stripped'); void c.offsetWidth; c.style.transition = '';
+      }
+      win.remove(); resolve();
+    };
+  });
+}
+async function respinCells(step, before, isHeld) {
+  const spun = step.spun || [1, 3], exp = step.expanded || [];
+  // each respun reel's column as it LANDS: an expanding reel shows the drawn wild (the plain W art in free spins)
+  // with its held cells and cosmetic symbols around it; it grows into the full column afterwards (playOne)
+  const target = {};
+  spun.forEach((r) => {
+    if (!exp.includes(r)) { target[r] = step.grid[r].slice(); return; }
+    const rows = (step.xwLand || []).filter(([rr]) => rr === r).map(([, k]) => k);
+    target[r] = [0, 1, 2].map((k) => (rows.includes(k) ? (step.feature ? SP.WILD : XWID) : isHeld(r, k) ? before[r][k] : cosmeticSym(r)));
+  });
+  spun.forEach((r) => {                          // an old Expanding Wild column on a reel that respins goes first
+    const el = xwEls[r]; if (!el) return;
+    xwEls[r] = null;
+    if (CALM_FX()) { el.remove(); return; }
+    el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).finished.catch(() => {}).then(() => el.remove());
+  });
+  if (CALM_FX()) { spun.forEach((r) => setReel(r, target[r])); return; }
+  const turbo = speedMode === 'turbo';
+  const dur0 = turbo ? 360 : 760, lag = turbo ? 70 : 170, rowLag = turbo ? 30 : 70;
+  activeAnims = [];
+  await Promise.all(spun.map((r, i) => {
+    const rows = [0, 1, 2].filter((k) => !isHeld(r, k));
+    return Promise.all(rows.map((k) => miniSpin(r, k, before[r][k], target[r][k], dur0 + i * lag + k * rowLag))).then(() => {
+      setReel(r, target[r]);
+      sfx.stop(r);
+      wildLand(r, target[r].map((s, k) => (rows.includes(k) ? s : '')));
+      if (rows.some((k) => target[r][k] === SP.SCATTER)) shake('scatterLand');
+    });
+  }));
+  activeAnims = [];
+}
 async function copyAnim(step) {
-  prompt('COPY!  CENTRE REEL → OUTER REELS', 'gold');
+  const before = state.grid.map((c) => c.slice());
+  const src = before[2];
+  const held = heldCells(step);
+  const isHeld = (r, k) => held.some(([a, b]) => a === r && b === k);
+  const calm = CALM_FX();
+  prompt(held.length ? 'REEL SPLIT!  TWO OF A KIND HOLDS' : 'REEL SPLIT!  CENTRE REEL → OUTER REELS', 'gold');
   sfx.copy();
-  const src = state.grid[2];
-  // LJ fork: an Expanding Wild column on reel 0 / 4 is overwritten by the copy: it fades out with the symbols
-  const oldXw = [0, 4].map((r) => xwEls[r]).filter(Boolean);
+  // 1. the near misses lock first: frames + HELD, a short beat so they read before anything moves
+  const marks = lockMarks(held);
+  if (held.length) { sfx.lock(); await sleep(calm ? 200 : 560); }
+  // 2. reels 0 / 4: the unlocked cells take reel 2's symbol in their row
+  const copyCells = [];
+  for (const r of [0, 4]) for (let k = 0; k < 3; k++) if (!isHeld(r, k)) copyCells.push([r, k]);
+  const copyReels = [0, 4].filter((r) => copyCells.some(([cr]) => cr === r));
+  // LJ fork: an Expanding Wild column on reel 0 / 4 (QA forces only) is overwritten by the copy: it fades out
+  const oldXw = copyReels.map((r) => xwEls[r]).filter(Boolean);
   oldXw.forEach((el) => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, easing: 'ease-in', fill: 'forwards' }));
-  // sweep beams from reel 2 outwards
+  // sweep beams from reel 2 outwards (towards a reel that takes at least one symbol)
   const beams = [];
   for (const dir of [-1, 1]) {
+    if (!copyReels.includes(dir < 0 ? 0 : 4) || calm) continue;
     const b = document.createElement('div'); b.className = 'sweep';
     b.style.left = (CX[2] - 60) + 'px'; b.style.width = '120px';
     fx.appendChild(b); beams.push(b);
     b.animate([{ transform: 'translateX(0)', opacity: 0 }, { opacity: 1, offset: 0.2 }, { transform: `translateX(${dir < 0 ? CX[0] - CX[2] : CX[4] - CX[2]}px)`, opacity: 0.9 }],
       { duration: 620, easing: 'cubic-bezier(.3,0,.3,1)', fill: 'forwards' });
   }
-  // the symbols being replaced on reels 0 and 4 fade out under the incoming ghosts (no double image)
-  const fades = [0, 4].map((r) => stripEls[r].animate(
+  // the symbols being replaced fade out under the incoming ghosts (no double image); held cells stay as they are
+  const fades = calm ? [] : copyCells.map(([r, k]) => visCell(r, k)).filter(Boolean).map((c) => c.animate(
     [{ opacity: 1 }, { opacity: 0 }],
     { duration: 300, easing: 'ease-in', fill: 'forwards' }));
-  // ghosts of reel 2's three symbols fly to reels 0 and 4
+  // ghosts of reel 2's symbols fly to the unlocked cells of reels 0 and 4
   const ghosts = [];
-  for (const target of [0, 4]) for (let k = 0; k < 3; k++) {
+  for (const [target, k] of calm ? [] : copyCells) {
     const g = makeCell(src[k], 2); g.classList.add('ghost');
     const k0 = symScale(src[k], 2, k === 2), k1 = symScale(src[k], target);
     const lift = k === 2 ? r2Lift(src[k], k0) : 0;       // reel 2's bottom symbol starts where it is drawn (lifted)
@@ -2740,17 +3117,27 @@ async function copyAnim(step) {
       { transform: `translate(${CX[target] - CX[2]}px,0px) scale(${k1})`, opacity: 1 },
     ], { duration: 640 + k * 70, easing: 'cubic-bezier(.5,0,.25,1)', fill: 'forwards' });
   }
-  await sleep(760);
-  setReel(0, src); setReel(4, src);
-  xwClear(0); xwClear(4);
+  if (copyCells.length) await sleep(calm ? 150 : 760);
+  // the engine's final columns: unlocked cells = reel 2's row, held cells their own symbol
+  copyReels.forEach((r) => { setReel(r, step.grid[r]); xwClear(r); });
   // a copied XW column shows as a full Expanding Wild reel on 0 and 4 (engine: step.copiedXW)
   const copiedXW = step.copiedXW || (src.every((s) => s === XWID) ? [0, 4] : []);
   copiedXW.forEach(xwCopied);
-  shake('copy');
+  if (copyCells.length) shake('copy');
   fades.forEach((f) => f.cancel());
   ghosts.forEach((g) => g.remove()); beams.forEach((b) => b.remove());
-  for (const r of [0, 4]) reelEls[r].animate([{ filter: 'brightness(2.2)' }, { filter: 'brightness(1)' }], { duration: 420 });
-  await sleep(220);
+  if (!calm) copyCells.forEach(([r, k]) => { const c = visCell(r, k); if (c) c.animate([{ filter: 'brightness(2.2)' }, { filter: 'brightness(1)' }], { duration: 420 }); });
+  if (copyCells.length) await sleep(220);
+  // 3. reels 1 / 3: only the unlocked cells respin
+  await respinCells(step, before, isHeld);
+  // 4. the locks have done their job: the marks fade (a win, if any, frames its lines next)
+  if (marks.length) {
+    await sleep(calm ? 0 : 260);
+    marks.forEach((m) => {
+      if (calm || !m.isConnected) { m.remove(); return; }
+      m.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, fill: 'forwards' }).finished.catch(() => {}).then(() => m.remove());
+    });
+  }
 }
 
 // the scatters light up, then the Free Spins splash plays straight away (no FREE SPINS banner any more)
@@ -2814,15 +3201,10 @@ async function playOne(manual) {
       const st = round.steps[i];
       speedMode = (turboToggle || holdTurbo) ? 'turbo' : 'normal';
       fillSet = st.feature ? 'free' : 'base';   // v14: a copy inside the feature respins from the free-spin set
-      if (st.kind === 'copy') {
-        await copyAnim(st);
-        // spec step 6 counts crowns on the FINAL cells: a copy can overwrite crowns the player saw land on
-        // reels 0/4. Say so, so it does not read as a bug (open question for Denis, CALIBRATION.md 4E).
-        const seen = round.steps[0].grid.flat().filter((c) => c === 'CROWN').length;
-        if (!st.feature && seen >= 3 && !round.featureTriggered) {
-          toast(`The copy overwrote the ${SKIN.terms.scatters}`, `${SKIN.terms.scatters} count on the final screen, after the copy.`, 2600);
-        }
-      }
+      // v16: the Reel Split (copy) never rolls while 3+ scatters show (engine), so it can no longer overwrite a
+      // trigger: the old "the copy overwrote the scatters" toast is gone. copyAnim plays the whole split (lock, copy,
+      // respin of the unlocked cells); the shared code below only adds an expansion if a respun wild expands.
+      if (st.kind === 'copy') await copyAnim(st);
       if (st.kind === 'free') {
         featureOn = true;                    // LJ fork: all five reels spin, nothing held
         if (!fsPanel.classList.contains('on')) fsPanelShow(true);
@@ -2831,14 +3213,18 @@ async function playOne(manual) {
         clearWins();
       }
       const spun = st.spun || [0, 1, 2, 3, 4];
-      // LJ fork: an expanded reel lands on its drawn XW cell(s) (cosmetic symbols around them), then grows
+      // LJ fork: an expanded reel lands on its drawn XW cell(s) (cosmetic symbols around them), then grows.
+      // v16: free spins have no plain wild; their one wild is the expanding one and it LANDS as the plain wild (W art),
+      // then grows into the column. In the base game an XW only exists through a QA force (forceXW / forceGrid).
       const expanded = (st.expanded || []).filter((r) => spun.includes(r));
-      const land = st.grid.map((col) => col.slice());
-      expanded.forEach((r) => {
-        const rows = (st.xwLand || []).filter(([rr]) => rr === r).map(([, k]) => k);
-        land[r] = [0, 1, 2].map((k) => (rows.includes(k) ? XWID : cosmeticSym()));
-      });
-      await rollSet(land, spun);           // v14: free spins tease scatters too (3 retrigger)
+      if (st.kind !== 'copy') {
+        const land = st.grid.map((col) => col.slice());
+        expanded.forEach((r) => {
+          const rows = (st.xwLand || []).filter(([rr]) => rr === r).map(([, k]) => k);
+          land[r] = [0, 1, 2].map((k) => (rows.includes(k) ? (st.feature ? SP.WILD : XWID) : cosmeticSym(r)));
+        });
+        await rollSet(land, spun);         // v14: free spins tease scatters too (3 retrigger)
+      }
       for (let r = 0; r < 5; r++) if (!spun.includes(r)) state.grid[r] = st.grid[r].slice();
       if (expanded.length) {
         sfx.xw();
@@ -2868,7 +3254,7 @@ async function playOne(manual) {
       } else if (round.steps[i + 1] && round.steps[i + 1].kind === 'copy' && !!round.steps[i + 1].feature === !!st.feature) {
         await sleep(260);                    // a miss, then its copy (base game or, v14, a free spin)
       } else if (st.feature) {
-        await sleep(280);
+        await sleep(speedMode === 'turbo' ? 120 : 160);   // fix round 1: a dead free spin moves on sooner (was 280 ms)
       }
       if (st.capReached) {                   // the 3500x cap ends the round on this step (engine stops it)
         prompt(`MAX WIN — ${SP.CAP}× BET REACHED`, 'gold');
@@ -2893,7 +3279,7 @@ async function playOne(manual) {
       fsPanelShow(false);
       prompt('');
       await sleep(400);
-      await fsTotalSplash(featC);            // COLLECT switches back to the base game look
+      await fsTotalSplash(featC, round.featureWin);   // COLLECT switches back to the base game look; tiers by x
       prompt('FEATURE WIN  ' + fmt(featC) + ' EUR', 'gold');
       dbg(`feature end: ${round.steps.filter((s) => s.kind === 'free').length} free spins (${round.retriggers || 0} retrigger(s)) · feature win ${round.featureWin}×`);
     }
@@ -3035,7 +3421,7 @@ $('bCoins').addEventListener('click', () => { sfx.click(); $('betmenu').classLis
 $('bBetBar').addEventListener('click', () => { sfx.click(); openBetMenu(); });
 function closeMenus() { $('betmenu').classList.remove('on'); $('rules').classList.remove('on'); $('scrim').classList.remove('on'); }
 $('scrim').addEventListener('click', closeMenus);
-const buyMsg = () => { sfx.click(); toast('Buy Bonus — not priced yet', '(outside the 96.1% sheet)', 2600); };
+const buyMsg = () => { sfx.click(); toast('Buy Bonus — not priced yet', `(outside the ${SP.RTP_LABEL || '96.0%'} sheet)`, 2600); };
 document.querySelectorAll('.btn.buy').forEach((b) => b.addEventListener('click', buyMsg));
 $('bSound').addEventListener('click', () => { const on = sfx.toggleSound(); $('bSound').classList.toggle('off', !on); });
 $('bMusic').addEventListener('click', () => { const on = sfx.toggleMusic(); $('bMusic').classList.toggle('off', !on); });
@@ -3118,56 +3504,63 @@ function renderRules() {
   const ps = SP.DIALS && SP.DIALS.PAY_SCALE;
   r.appendChild(el('div', 'note', `Paytable values read live from the engine (calibrated). Pays are multiples of the TOTAL bet; at the current bet of ${fmtBet(bet)} EUR the amount is shown under each multiple.` +
     (ps ? ` Prototype calibration: every pay is the spec's pay × ${ps}, rounded to 0.1× so every bet pays whole cents (this bends the J/Q/K/A steps slightly; see CALIBRATION.md).` : '')));
-  // fix round 3: the four dials that moved from the spec's prototype numbers, up front (CALIBRATION.md section 2)
+  // fix round 3: the dials that moved from the spec's prototype numbers, up front (CALIBRATION.md; v16 section first)
   r.appendChild(el('h3', '', 'Prototype calibration — spec value → shipped value'));
-  const D_ = SP.DIALS || {}, bw = SP.WEIGHTS || {}, fw = SP.FEATURE_WEIGHTS || {};
+  const D_ = SP.DIALS || {}, bw = SP.WEIGHTS || {};
   const wsum = (w) => SYMS.reduce((a, x) => a + (w[x] || 0), 0);
   const dev = el('table', 'dev');
   const pct1 = (x) => (x * 100).toFixed(2) + '%';
+  const pct0 = (x) => (x * 100).toFixed(1) + '%';
   const XP = SP.XW_EXPAND_P || { base: [0, 0, 0, 0, 0], feature: [0, 0, 0, 0, 0] };
+  const TG = SP.TARGETS || {};
+  // v16: every number below is read from the engine (dials, TARGETS = the pinned 240M-round mc.mjs readout)
+  const pFsXw = 1 - XP.feature.reduce((a, p) => a * (1 - p), 1);      // a free spin shows at least one expanding reel
+  const copyIn = (p) => (1 / (p || 1)).toFixed(1);
+  const W_ = SKIN.terms.wild, SC = SKIN.terms.scatter, SCS = SKIN.terms.scatters;
   [['Dial', 'Spec', 'Shipped', 'Why'],
    ['Paytable', 'J 0.2 … Wild 25', `× ${D_.PAY_SCALE}, rounded to 0.1× (J ${SP.PAYS.J} … Wild ${SP.PAYS.W})`, 'whole cents at every bet'],
-   ['Wild weight, base + copy reels 2-4', '2', String(D_.BASE_WILD), 'base RTP 56% (wilds only on the three middle reels, one per reel)'],
-   ['J / Q / K / A base weights', '× 1', '× ' + D_.BASE_ROYAL, 'hit rate ≈ 30% (see below)'],
-   [`${SKIN.terms.xw} weight per cell, base reels 2 and 4 / centre`, '—', `${D_.BASE_XW_OUTER} / ${D_.BASE_XW_MID}`,
-     `a reel expands in ${pct1(XP.base[1])} of spins (centre reel ${pct1(XP.base[2])}); never on reels 1 and 5`],
-   [`${SKIN.terms.scatter} weight, every spinning reel`, '3', String(D_.BASE_CROWN), `feature 1 in 125 (a copy turns one ${SKIN.terms.scatter} on the centre reel into three)`],
-   ['Wild weight, free-spin reels 2-4', '2', String(D_.FEATURE_WILD), `feature EV ≈ 50×: ${Math.round(100 * (fw.W || 0) / (wsum(fw) || 1))}% of their free-spin cells are wilds`],
-   [`${SKIN.terms.scatter} weight, free-spin reels`, '3', String(D_.FEATURE_CROWN), 'a retrigger in about 1 of 8 features'],
+   ['Wild weight, base reels 2-4', '2', String(D_.BASE_WILD), `base step RTP ${pct0(TG.baseStepRtp || 0)}: the base game's one wild, only on the three middle reels, one per reel`],
+   ['J / Q / K / A base weights, reels 2-4', '× 1', '× ' + D_.BASE_ROYAL, 'reels 1 and 5 carry only J 64 / Q 36 / K 14 / A 6 + ' + SCS],
+   [`${SKIN.terms.xw} weight, base reels`, '—', `${D_.BASE_XW_OUTER} / ${D_.BASE_XW_MID}`, 'v16 rule: one wild in the base game, it never expands there'],
+   [`${SC} weight, base reels`, '3', String(D_.BASE_CROWN), `free spins 1 in ${Math.round(1 / (TG.featureRate || 1 / 131))} (a Reel Split can turn one ${SC} on the centre reel into three)`],
+   ['Reel Split chance, base game', '0.0308 (v15)', `${SP.COPY_P} (1 in ${copyIn(SP.COPY_P)})`, `rolled on a no-win screen with fewer than 3 ${SCS}: a split about 1 spin in ${Math.round(TG.copyOneIn || 41)}, ${TG.copyAvg || '≈9.5'}× on average`],
+   ['Plain wild weight, free-spin reels', '2', String(D_.FEATURE_WILD), 'v16 rule: in free spins every wild is the expanding one'],
    [`${SKIN.terms.xw} weight per cell, free-spin reels 2 and 4 / centre`, '—', `${D_.FEATURE_XW_OUTER} / ${D_.FEATURE_XW_MID}`,
-     `a reel expands in ${pct1(XP.feature[1])} of free spins (centre reel ${pct1(XP.feature[2])})`],
+     `a reel expands in ${pct1(XP.feature[1])} of free spins (centre reel ${pct1(XP.feature[2])}); ${pct0(pFsXw)} of free spins show one`],
+   ['Low / high themed symbols, free-spin reels', '× 1 / × 1', `× ${D_.FEATURE_LOW} / × ${D_.FEATURE_HIGH}`, 'v16 fix round 2: fewer of the three high symbols, a few more of the four low ones: more small line hits per free spin'],
+   [`${SC} weight, free-spin reels`, '3', String(D_.FEATURE_CROWN), `${pct0(TG.retriggerShare || 0)} of features retrigger; ${TG.freeSpinsPerFeature || '≈32'} free spins per feature on average (about 1 in ${Math.round(1 / (TG.spinsAtLeast50 || 0.2))} run to 50 or more)`],
+   ['Reel Split chance, free spins', '2/9 (v15)', `${SP.COPY_P_FREE} (1 in ${copyIn(SP.COPY_P_FREE)})`, `rolled on a no-win free spin with fewer than 3 ${SCS}`],
   ].forEach((row, i) => { const tr = el('tr'); row.forEach((c) => tr.appendChild(el(i ? 'td' : 'th', '', c))); dev.appendChild(tr); });
   r.appendChild(dev);
-  const TG = SP.TARGETS || {};
-  r.appendChild(el('div', 'note', `LEVEE JAW runs its own engine (forked from SALT PIMP on 2026-10-16: ${SKIN.terms.xw}, ${NFS} free spins on all five reels, no royals in free spins; ` +
-    `2026-10-19: wilds only on reels 2-4, one wild and one ${SKIN.terms.scatter} per reel, the copy in free spins at 2 in 9, retrigger +10). ` +
-    `2026-10-20 (v15, director's maths): in the base game the outer reels carry only royals and ${SKIN.terms.scatters}, the copy rolls 1 in ${(1 / (SP.COPY_P || 1 / 9)).toFixed(1)} on a double miss. Lines, boards and the 3500× cap are as written. The sheet: RTP ${SP.RTP_LABEL || '96.1%'} (base ${pct1(TG.baseRtp || 0.67)} incl. the copy, feature ${pct1(TG.featureRtp || 0.291)}), ` +
-    `hit ${pct1(TG.hitRate || 0.3)}, feature 1 in ${Math.round(1 / (TG.featureRate || 1 / 125))}, feature EV ${TG.featureEv || 36}×; the exact readout of this engine is pinned in build.mjs (CALIBRATION.md). ` +
-    `Wild share of base cells: ${(100 * (bw.W || 0) / (wsum(bw) || 1)).toFixed(1)}%.`));
+  r.appendChild(el('div', 'note', `LEVEE JAW runs its own engine (forked from SALT PIMP on 2026-10-16; 2026-10-19: wilds only on reels 2-4, one wild and one ${SC} per reel, retrigger +10; ` +
+    `2026-10-20: the outer base reels carry only royals and ${SCS}). v16 (2026-10-22): one wild in the base game and every free-spin wild expands, no Reel Split over a trigger, ` +
+    `near misses lock during the split, spikier free spins. Lines, boards and the ${SP.CAP}× cap are as written. The sheet (240M-round seeded Monte Carlo, pinned in build.mjs; CALIBRATION.md v16): ` +
+    `RTP ${SP.RTP_LABEL || '96.0%'} = base step ${pct0(TG.baseStepRtp || 0)} + Reel Split ${pct0(TG.copyRtp || 0)} + free spins ${pct0(TG.featureRtp || 0)}; ` +
+    `free spins 1 in ${Math.round(1 / (TG.featureRate || 1 / 131))}, ${TG.featureEv || '≈69'}× on average (median ${TG.featureMedian || '≈35'}×, top 1% from ${TG.featureP99 || '≈500'}×, ` +
+    `the brief's ~500×; ${pct0(TG.featureUnder15 || 0)} of features end below the BIG line of 15×; the cost is longer features, CALIBRATION.md v16 fix round 2). ` +
+    `Wild share of base cells on reels 2-4: ${(100 * (bw.W || 0) / (wsum(bw) || 1)).toFixed(1)}%.`));
   r.appendChild(el('h3', '', 'Hit rate'));
-  r.appendChild(el('div', 'note', 'The hit rate (about 26% of spins) counts a spin that pays anything on either board, the copy included. ' +
-    'The base step alone, before any copy, pays less often (about 25% of spins).'));
+  r.appendChild(el('div', 'note', `The hit rate (about ${pct0(TG.hitRate || 0.276)} of spins) counts a spin that pays anything on either board, the Reel Split included. ` +
+    'The base step alone, before any split, pays a little less often (about 25.6% of spins).'));
   r.appendChild(el('h3', '', 'Pays — three of a kind on a line'));
   const g = el('div', 'pays');
-  const order = SYMS.filter((s) => pays[s] != null).sort((a, b) => pays[b] - pays[a]);
+  const order = SYMS.filter((s) => pays[s] != null && s !== XWID).sort((a, b) => pays[b] - pays[a]);
   order.forEach((s) => {
     const p = el('div', 'pay'); const ic = el('div', 'ic'); ic.appendChild(makeCell(s, 1)); p.appendChild(ic);
     p.appendChild(el('b', '', pays[s] + '×'));
-    p.appendChild(el('span', '', (LABEL[s] || s) + ' · ' + fmt(winC(pays[s])) + ' EUR'));
+    // v16: ONE wild; its tile says it expands in free spins (there is no separate Expanding Wild symbol any more)
+    p.appendChild(el('span', '', (LABEL[s] || s) + ' · ' + fmt(winC(pays[s])) + ' EUR' + (s === SP.WILD ? ' · expands in free spins' : '')));
     g.appendChild(p);
   });
   const cp = el('div', 'pay'); const ic = el('div', 'ic'); ic.appendChild(makeCell('CROWN', 1)); cp.appendChild(ic);
-  cp.appendChild(el('b', '', 'SCATTER')); cp.appendChild(el('span', '', SKIN.terms.scatter + ' · 3+ anywhere → ' + NFS + ' free spins (+' + (SP.RETRIGGER_SPINS || 10) + ' during free spins)')); g.appendChild(cp);
-  // LJ fork: the Expanding Wild tile (no pay of its own: it is wild on its whole reel)
-  const xp = el('div', 'pay'); const xic = el('div', 'ic'); xic.appendChild(makeCell(XWID, 1)); xp.appendChild(xic);
-  xp.appendChild(el('b', '', 'WILD')); xp.appendChild(el('span', '', SKIN.terms.xwChar + ' ' + SKIN.terms.xw + ' · fills its whole reel')); g.appendChild(xp);
+  cp.appendChild(el('b', '', 'SCATTER')); cp.appendChild(el('span', '', SC + ' · 3+ anywhere → ' + NFS + ' free spins (+' + (SP.RETRIGGER_SPINS || 10) + ' during free spins)')); g.appendChild(cp);
   r.appendChild(g);
-  r.appendChild(el('h3', '', SKIN.terms.xw));
-  r.appendChild(el('div', '', `The ${SKIN.terms.xwChar} ${SKIN.terms.xw} lands only on the three middle reels (2, 3 and 4), in the base game, the copy and the free spins (less often on the shared centre reel). ` +
-    `When it lands anywhere on a reel, it expands to cover that whole reel for the spin. It substitutes like the ${SKIN.terms.wild} for every pay symbol except the ${SKIN.terms.scatter}, and it covers a ${SKIN.terms.scatter} on its reel. ` +
-    `A line made only of wilds (${SKIN.terms.wilds} and/or ${SKIN.terms.xw}s) pays the wild pay. If a copy follows, an ${SKIN.terms.xw} on the centre reel is copied onto both outer reels.`));
+  r.appendChild(el('h3', '', 'The wild'));
+  r.appendChild(el('div', '', `There is one wild, the ${W_}. It lands only on the three middle reels (2, 3 and 4), at most one per reel, and substitutes for every pay symbol except the ${SC}. ` +
+    `A line of three wilds pays the top pay, ${SP.PAYS.W}×. In free spins every wild expands to fill its reel: it lands as the ${W_}, then ${SKIN.terms.xwChar} grows over the whole reel, ` +
+    `so that reel is wild on all three rows for the spin (it covers a ${SC} on its reel). If a Reel Split follows, an expanded centre reel is copied whole onto both outer reels.`));
   r.appendChild(el('h3', '', 'Two boards, ten lines'));
-  r.appendChild(el('div', '', 'Five reels, three rows. The LEFT board is the three left reels, the RIGHT board the three right reels: the centre reel is scored by both. Each board has the same five lines, read left to right, three of a kind. One stake covers both boards — ten line checks per spin. Overlapping lines on the same board all pay; the highest symbol wins a line. Wild (' + SKIN.terms.wild + ') substitutes for every pay symbol except the ' + SKIN.terms.scatter + '; three wilds pay the wild. Wilds land only on the three middle reels (2, 3 and 4), and a reel shows at most one wild and at most one ' + SKIN.terms.scatter + '. Left-board wins are framed in ' + SKIN.terms.frameL + ', right-board wins in ' + SKIN.terms.frameR + '.'));
+  r.appendChild(el('div', '', 'Five reels, three rows. The LEFT board is the three left reels, the RIGHT board the three right reels: the centre reel is scored by both. Each board has the same five lines, read left to right, three of a kind. One stake covers both boards — ten line checks per spin. Overlapping lines on the same board all pay; the highest symbol wins a line. The wild substitutes for every pay symbol except the ' + SC + '; three wilds pay the wild. A reel shows at most one wild and at most one ' + SC + '. Left-board wins are framed in ' + SKIN.terms.frameL + ', right-board wins in ' + SKIN.terms.frameR + '.'));
   const ldw = el('div', 'linesdemo');
   lines.forEach((rows, li) => {
     const d = el('div', 'ld');
@@ -3176,16 +3569,31 @@ function renderRules() {
     ldw.appendChild(d);
   });
   r.appendChild(ldw);
-  r.appendChild(el('h3', '', 'The copy'));
-  r.appendChild(el('div', '', 'In the base game the two outer reels show only J, Q, K, A and ' + SKIN.terms.scatters + ', so ordinary wins are royal lines. If neither board pays, there is a 1 in ' + Math.round(1 / (SP.COPY_P || 1 / 9)) + ' chance of a COPY (about one spin in 43): the centre reel is copied onto the two outer reels, the two reels beside the centre respin once, and both boards are scored once more. No chain. ' + SKIN.terms.scatters + ' are counted after the copy, so a copy can create a trigger (a ' + SKIN.terms.scatter + ' on the centre reel becomes three) - or remove one (' + SKIN.terms.scatters + ' on the outer reels are overwritten). The copy carries the centre reel as it stands, wilds included, so after a copy the outer reels can show wilds. In free spins the copy comes twice as often: 2 in 9 on a free spin where neither board pays.'));
+  r.appendChild(el('h3', '', 'The Reel Split'));
+  r.appendChild(el('div', '', `In the base game the two outer reels show only J, Q, K, A and ${SCS}, so ordinary wins are royal lines. ` +
+    `If neither board pays and fewer than three ${SCS} show, there is a 1 in ${copyIn(SP.COPY_P)} chance of a REEL SPLIT (about one spin in ${Math.round(TG.copyOneIn || 41)}): ` +
+    'the centre reel is copied onto the two outer reels, the two reels beside the centre respin once, and both boards are scored once more. No chain. ' +
+    // fix round 1: the lock sentence states the engine's exact conditions (engine nearMisses; SPEC.md v16)
+    `Two of a kind on a line stay in place during the Reel Split (marked HELD) when the line's missing third symbol is on a reel the split changes, ` +
+    'that is, not the centre reel: on the reels beside the centre a held symbol does not respin, on an outer reel it keeps its own symbol instead of the centre reel\'s. ' +
+    `A wild matches any pay symbol and a ${SC} matches nothing. Nothing is held on a line whose missing symbol is on the centre reel, ` +
+    'or on a line where a wild sits between two different symbols (that is two pairs, not one). ' +
+    'An outer-reel symbol paired with the centre reel is not held when the split keeps the pair by itself: when the two share a row, or when the centre reel shows a wild in that row (the wild is copied out). ' +
+    `The split never rolls while three or more ${SCS} show, so it can never remove a trigger; ${SCS} are counted after it, so it can create one (a ${SC} on the centre reel becomes three). ` +
+    'The split carries the centre reel as it stands, wilds included, so after a split the outer reels can show wilds. ' +
+    `In free spins, a free spin where neither board pays and fewer than three ${SCS} show has a ${Math.round(100 * SP.COPY_P_FREE)}% chance of a Reel Split (1 in ${copyIn(SP.COPY_P_FREE)}).`));
   r.appendChild(el('h3', '', 'Free spins'));
-  r.appendChild(el('div', '', `Three or more ${SKIN.terms.scatters} anywhere on the final screen (after a copy, copied ones count) start ${NFS} free spins at the same bet, after the base win is paid. ` +
-    `${SKIN.terms.xwChar} clears the royals first: there is no J, Q, K or A on any reel during the free spins. All five reels spin on every free spin, with more ${SKIN.terms.wilds} (a feature-only weight set: about ${SP.FEATURE_WEIGHTS ? Math.round(100 * SP.FEATURE_WEIGHTS.W / SYMS.reduce((a, x) => a + (SP.FEATURE_WEIGHTS[x] || 0), 0)) : 30}% of their cells) and more ${SKIN.terms.xw}s. ` +
-    `If neither board pays on a free spin, there is a 2 in 9 chance of a copy. Three or more ${SKIN.terms.scatters} on a free spin's final screen (after its copy) add ${SP.RETRIGGER_SPINS || 10} more free spins, any number of times; ${SKIN.terms.scatters} never pay. The royals return after the last free spin.`));
+  r.appendChild(el('div', '', `Three or more ${SCS} anywhere on the final screen (after a Reel Split, copied ones count) start ${NFS} free spins at the same bet, after the base win is paid. ` +
+    `${SKIN.terms.xwChar} clears the royals first: there is no J, Q, K or A on any reel during the free spins. All five reels spin on every free spin. ` +
+    `Every wild that lands in free spins expands to fill its reel (about ${pct0(pFsXw)} of free spins show at least one). ` +
+    `Three or more ${SCS} on a free spin's final screen add ${SP.RETRIGGER_SPINS || 10} more free spins, any number of times (a round plays at most ${SP.MAX_FREE_SPINS || 1000} free spins); ${SCS} never pay. The royals return after the last free spin. ` +
+    // fix round 2: the expected feature length from TARGETS (= PIN_MC_CONFIRM: retriggerShare, freeSpinsPerFeature, spinsAtLeast50)
+    `A feature lasts about ${Math.round(TG.freeSpinsPerFeature || 31.8)} free spins on average: ${Math.round(100 * (1 - (TG.retriggerShare || 0.507)))}% end after the first ${NFS}, about 1 in ${Math.round(1 / (TG.spinsAtLeast50 || 0.2))} run to 50 or more. ` +
+    `The Total Win at the end grows with the win: MEGA WIN from ${SPL.fsTotal.tiers.mega}×, EPIC WIN from ${SPL.fsTotal.tiers.epic}×, LEGENDARY WIN from ${SPL.fsTotal.tiers.legend}× the bet.`));
   r.appendChild(el('h3', '', 'Limits'));
-  r.appendChild(el('div', '', `A round (base spin, copy and the whole feature together) pays at most ${SP.CAP}× the bet; reaching it ends the feature at once. RTP ${SP.RTP_LABEL || '96.1%'}. Buy Bonus is not priced yet and is outside the RTP sheet. Malfunction voids all pays.`));
-  r.appendChild(el('div', 'note', 'Footer "chance of max win per line": rounds that see three wilds (' + SKIN.terms.wilds + ' or ' + SKIN.terms.xw + ' columns) on one line, copy and free spins included. ' +
-    'Since 2026-10-19 the outer reels carry no wild, so a base spin alone never shows W-W-W: it takes a copy or the free spins. The footer shows how many rounds see one (measured: about 1 in 844).'));
+  r.appendChild(el('div', '', `A round (base spin, Reel Split and the whole feature together) pays at most ${SP.CAP}× the bet; reaching it ends the feature at once. RTP ${SP.RTP_LABEL || '96.0%'}. Buy Bonus is not priced yet and is outside the RTP sheet. Malfunction voids all pays.`));
+  r.appendChild(el('div', 'note', 'Footer "chance of max win per line": rounds that see three wilds (' + SKIN.terms.wilds + ' or expanded reels) on one line, Reel Split and free spins included. ' +
+    `The outer reels carry no wild, so a base spin alone never shows W-W-W: it takes a Reel Split or the free spins. The footer shows how many rounds see one (measured on the v16 engine: about 1 in ${MAXLINE_ODDS.split(':')[1]}).`));
   r.appendChild(el('h3', '', 'Controls'));
   r.appendChild(el('div', 'note', 'Spin: big button or Space (press again to stop the reels quickly). Hold the big button or Space for continuous turbo spins. ' + SKIN.terms.turbo + 'Green button (or A) toggles autoplay; while it runs, Space / the spin button only quick-stop the reels. ' + SKIN.terms.betButtons + '; – / + step the bet. ' + SKIN.terms.fullscreen + 'Keyboard: ← / → or − / + bet · B bet menu · T turbo · A autoplay · I rules · M music · S sound · Esc close · Tab + Enter any button · D QA simulator · G debug overlay.'));
 }
@@ -3196,7 +3604,7 @@ $('simGo').onclick = () => {
   if (simRun) return;
   const N = Math.max(1, +$('simN').value | 0), seed = +$('simSeed').value | 0;
   const r = SP.makeRng(seed);
-  const a = { n: 0, win: 0, base: 0, feat: 0, hits: 0, copies: 0, dmiss: 0, feats: 0, max: 0, capped: 0, t0: performance.now() };
+  const a = { n: 0, win: 0, base: 0, feat: 0, hits: 0, copies: 0, copyWin: 0, dmiss: 0, overTrig: 0, blocked: 0, baseXw: 0, fsW: 0, feats: 0, max: 0, capped: 0, t0: performance.now() };
   simRun = { stop: false };
   const chunk = () => {
     if (simRun.stop) { simRun = null; return; }
@@ -3206,8 +3614,12 @@ $('simGo').onclick = () => {
       a.win += x.totalWin; a.base += x.baseWin; a.feat += x.featureWin;
       const b = x.steps[0];
       if ((b.wins && b.wins.length) || (x.steps[1] && x.steps[1].kind === 'copy' && x.steps[1].wins.length)) a.hits++;
-      if (!(b.wins && b.wins.length)) a.dmiss++;
-      if (x.copied) a.copies++;
+      // v16: the split rolls only on a no-win screen with fewer than 3 scatters (a 'copy screen')
+      const nCr = SP.crownCells(b.grid).length;
+      if (!(b.wins && b.wins.length)) { if (nCr < 3) a.dmiss++; else a.blocked++; }
+      if (x.copied) { a.copies++; a.copyWin += x.steps[1].stepWin; if (nCr >= 3) a.overTrig++; }
+      if (b.grid.flat().includes(SP.XW)) a.baseXw++;                        // v16: never (one base wild, no XW)
+      for (const s of x.steps) if (s.feature && s.grid.flat().includes(SP.WILD)) { a.fsW++; break; }   // v16: never
       if (x.featureTriggered) a.feats++;
       if (x.capReached) a.capped++;
       if (x.totalWin > a.max) a.max = x.totalWin;
@@ -3226,7 +3638,11 @@ function paintSim(a, N) {
     ['base RTP (incl. copy)', pct(a.base / a.n), pct(T.baseRtp), Math.abs(a.base / a.n - T.baseRtp) < 0.01],
     ['feature RTP', pct(a.feat / a.n), pct(T.featureRtp), Math.abs(a.feat / a.n - T.featureRtp) < 0.015],
     ['hit rate (base or copy pays)', pct(a.hits / a.n), pct(T.hitRate), Math.abs(a.hits / a.n - T.hitRate) < 0.01],
-    ['copy / double-miss', a.dmiss ? '1 in ' + (a.dmiss / Math.max(1, a.copies)).toFixed(2) : '—', '1 in ' + (1 / SP.COPY_P).toFixed(1), a.copies && Math.abs(a.dmiss / a.copies * SP.COPY_P - 1) < 0.06],
+    ['Reel Split / copy screen', a.dmiss ? '1 in ' + (a.dmiss / Math.max(1, a.copies)).toFixed(2) : '—', '1 in ' + (1 / SP.COPY_P).toFixed(1), a.copies && Math.abs(a.dmiss / a.copies * SP.COPY_P - 1) < 0.06],
+    ['Reel Split per round', a.copies ? '1 in ' + (a.n / a.copies).toFixed(1) : '—', '1 in ' + (T.copyOneIn || '—'), a.copies && Math.abs(a.n / a.copies / (T.copyOneIn || 41.2) - 1) < 0.06],
+    ['avg Reel Split', a.copies ? (a.copyWin / a.copies).toFixed(2) + '×' : '—', (T.copyAvg || '—') + '×', a.copies && Math.abs(a.copyWin / a.copies / (T.copyAvg || 9.47) - 1) < 0.1],
+    ['split over 3+ scatters (must be 0)', String(a.overTrig), '0  (' + a.blocked + ' blocked)', a.overTrig === 0],
+    ['base XW / plain W in FS (must be 0)', a.baseXw + ' / ' + a.fsW, '0 / 0', a.baseXw === 0 && a.fsW === 0],
     ['feature', a.feats ? '1 in ' + (a.n / a.feats).toFixed(1) : '—', '1 in ' + Math.round(1 / T.featureRate), a.feats && Math.abs(a.n / a.feats * T.featureRate - 1) < 0.08],
     ['avg feature', a.feats ? (a.feat / a.feats).toFixed(2) + '×' : '—', T.featureEv + '×', a.feats && Math.abs(a.feat / a.feats / T.featureEv - 1) < 0.08],
     ['max win', a.max.toFixed(2) + '×', SP.CAP + '× cap', true],
@@ -3259,13 +3675,15 @@ window.SP_DEBUG = {
   forceGrid(grid) { qaMark('forceGrid'); pendingForce = Object.assign(pendingForce || {}, { grid }); return 'next spin uses this grid'; },
   forceCopy() { qaMark('forceCopy'); pendingForce = Object.assign(pendingForce || {}, { copy: true }); return 'next spin forces a copy'; },
   forceFeature() { qaMark('forceFeature'); pendingForce = Object.assign(pendingForce || {}, { crowns: true }); return 'next spin forces 3 scatters' + forceClash(); },
-  // LJ fork: force an Expanding Wild on the next BASE step: forceXW(2) or forceXW([1, 3]) (engine force.xw)
+  // LJ fork: force an Expanding Wild on the next BASE step: forceXW(2) or forceXW([1, 3]) (engine force.xw).
+  // v16: QA ONLY. The base game has one wild (plain W) and no XW, so a base Expanding Wild can never occur naturally;
+  // in free spins every wild expands on its own (no force needed: see the test panel's free spins preset).
   forceXW(reels) {
     const a = [...new Set([].concat(reels == null ? [2] : reels).map(Number).filter((r) => Number.isInteger(r) && r >= 0 && r <= 4))].sort();
     if (!a.length) return 'forceXW: give reel indices 0..4';
     qaMark('forceXW ' + a.join(','));
     pendingForce = Object.assign(pendingForce || {}, { xw: a });
-    return 'next spin expands reel(s) ' + a.join(',') + forceClash();
+    return 'next spin expands reel(s) ' + a.join(',') + ' (QA only: no Expanding Wild in the v16 base game)' + forceClash();
   },
   debug(on) { dbgShow(on == null ? !$('dbg').classList.contains('on') : !!on); return $('dbg').classList.contains('on'); },
   get log() { return dbgLines.slice(); },
@@ -3275,6 +3693,13 @@ window.SP_DEBUG = {
   get busy() { return busy; },
   spin: () => { debugAuto = true; return playOne().finally(() => { debugAuto = false; }); },   // presses START itself
   setBalance(eur) { qaMark('setBalance'); balanceC = toC(eur); hud(); },
+  // v16 fix round 2: preview the free spins Total Win splash for a feature of x times the bet (QA; COLLECT closes it,
+  // auto = true presses COLLECT itself). Resolves when it closes.
+  fsTotal(x, auto) {
+    if (busy) return Promise.resolve('busy');
+    qaMark('fsTotal ' + x); busy = true; debugAuto = !!auto;
+    return fsTotalSplash(winC(+x), +x).then(() => 'tier ' + fsTier(+x)).finally(() => { debugAuto = false; busy = false; fsLook(false); });
+  },
   showGrid(grid) {
     clearWins();
     grid.forEach((col, r) => {                 // an XW anywhere on a reel shows it expanded, as the engine scores it
@@ -3330,7 +3755,7 @@ function prewarm() {
   // grow every reel's cell pool to a full normal-speed strip now (the first spin used to create ~25 nodes per reel)
   for (let r = 0; r < 5; r++) {
     const col = state.grid[r];
-    layStrip(r, [visualSym(), col[0], col[1], col[2], ...Array.from({ length: 28 }, visualSym)]);
+    layStrip(r, [visualSym(r), col[0], col[1], col[2], ...Array.from({ length: 28 }, () => visualSym(r))]);
   }
   let n = 0;
   (function tick() {
@@ -3350,13 +3775,15 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
    pendingForce, qaMark, toast. It touches no game rule: a test spin is an ordinary round whose BASE grid is forced
    through the engine's own force.grid (the same hook as SP_DEBUG.forceGrid), so the expanding wild, the copy respin,
    line wins, splashes and the feature all play out exactly as they would naturally. The free spins and the copy's
-   two respun reels stay random (the engine has no force for them).
+   respun cells stay random (the engine has no force for them); a preset with a seed runs its one spin on that seed,
+   so they play out as its label says (v16).
 
    A small TEST button sits on the cabinet in both views. It opens a panel over the reels:
      - a 5 x 3 layout: pick a symbol in the palette (or the eraser), then tap cells. An empty cell is filled at spin
        time with a random PAY symbol (never a wild or a scatter, so randomness never adds a feature by accident);
-     - copy respin: natural (the engine's own roll, 1 in 32 since v15) / force / never. The copy only ever happens when BOTH boards
-       miss, so "force" does nothing on a layout that wins;
+     - copy respin (the Reel Split): natural (the engine's own roll on a copy screen, SP.COPY_P) / force / never. The
+       split only ever happens when BOTH boards miss and fewer than 3 scatters show (v16: never over a trigger), so
+       "force" does nothing on a layout that wins or shows 3+ scatters;
      - presets (each one checked with the engine: see README "Test layout panel") and your own saved layouts
        (this browser only: localStorage);
      - SPIN THIS LAYOUT plays it; the panel reopens when the round is over (untick "reopen after spin" to stop that);
@@ -3382,27 +3809,47 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   let layoutName = null;                       // the preset / saved layout on the grid (the video's file name), if untouched
   const canRec = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia && window.MediaRecorder);
 
-  /* presets: reels left to right, each [top, middle, bottom]; scored with the engine (scoreGrid / playRound) */
+  /* presets: reels left to right, each [top, middle, bottom]; scored with the engine (scoreGrid / playRound).
+     v16: the base game has no Expanding Wild any more, so the old base XW presets are gone (the XW stays in the
+     palette for QA, with a warning). seed = a preset that also needs the RANDOM part to go one way (the split's respin,
+     the free spins): the test spin runs on that fixed seed (then the game's own random seed is back), so it shows
+     what its label says every time. Every preset was checked with the engine (node, the same playRound call). */
   const PRESETS = [
     { name: 'Free spins trigger', copy: 'never',
       grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'CROWN', 'J'], ['KEY', 'J', 'K'], ['A', 'CROWN', 'Q']] },
-    { name: 'Free spins + Exp. Wild', copy: 'never',
-      grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'CROWN', 'J'], ['XW', 'J', 'K'], ['A', 'CROWN', 'Q']] },
-    { name: 'Exp. Wild centre', copy: 'never',
-      grid: [['J', 'KEY', 'Q'], ['A', 'KEY', 'STUD'], ['K', 'XW', 'J'], ['Q', 'KEY', 'A'], ['STUD', 'KEY', 'K']] },
-    { name: 'Exp. Wilds reels 2 + 4', copy: 'never',
-      grid: [['K', 'J', 'A'], ['XW', 'Q', 'J'], ['A', 'STUD', 'Q'], ['XW', 'K', 'J'], ['Q', 'A', 'K']] },
-    { name: 'Copy respin', copy: 'force',
-      grid: [['J', 'Q', 'K'], ['A', 'KEY', 'STUD'], ['Q', 'J', 'A'], ['STUD', 'KEY', 'K'], ['J', 'A', 'Q']] },
+    // v16 fix round 2 (new free-spin dials): seed 2119: free spin 1 lands two wilds (reels 2 and 3) that expand;
+    // one retrigger, 20 free spins, 59.1× in all (a MEGA WIN Total Win)
+    { name: 'Free spins: expanding wilds', copy: 'never', seed: 2119,
+      grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'CROWN', 'J'], ['KEY', 'J', 'K'], ['A', 'CROWN', 'Q']] },
+    // v16 fix round 2: the Total Win tiers. Seed 3777: 40 free spins (3 retriggers), 374.4× -> the Total Win rolls
+    // through MEGA (50×) into EPIC WIN (250×). (A 1000×+ LEGENDARY feature always runs 240+ free spins on this maths:
+    // preview that splash with SP_DEBUG.fsTotal(1200) instead.)
+    { name: 'Free spins: EPIC total (374×)', copy: 'never', seed: 3777,
+      grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'CROWN', 'J'], ['KEY', 'J', 'K'], ['A', 'CROWN', 'Q']] },
+    // v16: no Reel Split over a trigger. Copy is FORCED here and still does not fire: 3 scatters, no line -> free spins
+    { name: '3 scatters, no line: no split', copy: 'force',
+      grid: [['K', 'CROWN', 'J'], ['STUD', 'Q', 'KEY'], ['CROWN', 'BANDANA', 'A'], ['J', 'RING', 'CASH'], ['Q', 'A', 'CROWN']] },
+    // v16 near-miss lock. Left middle RING-RING and the right diagonal A-?-A are two of a kind with the third cell on a
+    // reel that changes: those cells are HELD. Seed 28: the left middle completes with the copied RING and reel 4's
+    // respun middle lands an A, so both held lines pay (12.4×)
+    { name: 'Near-miss lock (Reel Split)', copy: 'force', seed: 28,
+      grid: [['K', 'J', 'Q'], ['KEY', 'RING', 'STUD'], ['A', 'RING', 'BANDANA'], ['Q', 'KEY', 'CASH'], ['J', 'Q', 'A']] },
+    { name: 'Reel Split (nothing held)', copy: 'force',
+      grid: [['J', 'Q', 'K'], ['A', 'KEY', 'STUD'], ['Q', 'J', 'A'], ['STUD', 'KEY', 'K'], ['J', 'A', 'K']] },
+    // fix round 1: a lock never stops a centre wild being copied out. Left diagonal K-CASH-K is two of a kind, but the
+    // centre reel's top cell is the wild: reel 1's top K is NOT held, the split copies the wild onto reels 1 and 5
+    // (both outer reels end W / RING / K, so both top lines read W-?-W). Seed 10: reel 2's respun top cell is a wild,
+    // so the left top line is W-W-W (56.3x, the top pay) and the right top line W-STUD-W pays STUD: 60.6x in all
+    { name: 'Centre wild copied out (60.6×)', copy: 'force', seed: 10,
+      grid: [['K', 'J', 'Q'], ['STUD', 'CASH', 'BANDANA'], ['W', 'RING', 'K'], ['BLADE', 'STUD', 'KEY'], ['Q', 'A', 'J']] },
     { name: 'BIG WIN (18×)', copy: 'never',
       grid: [['BLADE', 'J', 'Q'], ['BLADE', 'A', 'KEY'], ['BLADE', 'K', 'STUD'], ['J', 'KEY', 'A'], ['Q', 'STUD', 'K']] },
     { name: 'MEGA WIN (113×)', copy: 'never',
       grid: [['RING', 'RING', 'RING'], ['RING', 'W', 'RING'], ['RING', 'RING', 'RING'], ['RING', 'W', 'RING'], ['RING', 'RING', 'RING']] },
-    { name: '3 Exp. Wilds (338×)', copy: 'never',     // v14: the old all-wilds screen cannot land any more
-      grid: [['BOTTLE', 'BOTTLE', 'BOTTLE'], ['J', 'XW', 'Q'], ['K', 'XW', 'A'], ['Q', 'XW', 'J'], ['BOTTLE', 'BOTTLE', 'BOTTLE']] },
-    { name: 'Near miss (2 scatters)', copy: 'never',
+    { name: 'Scatter tease (2 scatters)', copy: 'never',
       grid: [['J', 'CROWN', 'Q'], ['K', 'A', 'STUD'], ['Q', 'J', 'A'], ['KEY', 'CROWN', 'K'], ['A', 'J', 'Q']] },
   ];
+  let layoutSeed = null;                       // the loaded preset's seed (cleared as soon as the grid is touched)
 
   const css = document.createElement('style');
   css.textContent = `
@@ -3468,7 +3915,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
     background:linear-gradient(#ffe08a,#d49a2a);border-color:#fff0c0}
   /* portrait: a phone shows the 1080 px stage at about a third of its size, so the panel stacks and everything is
      drawn about twice as large (tap targets of ~25 pt or more on the phone) */
-  html.portrait #tpPanel{left:16px;top:70px;width:1048px;transform:none;padding:26px 28px 30px;font-size:30px;border-width:4px}
+  html.portrait #tpPanel{left:16px;top:44px;width:1048px;transform:none;padding:26px 28px 30px;font-size:30px;border-width:4px}
   html.portrait #tpPanel button{font-size:28px;height:72px;border-radius:14px;padding:0 20px}
   html.portrait .tp-head b{font-size:44px}
   html.portrait .tp-head span{display:none}
@@ -3486,7 +3933,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   html.portrait .tp-pal{gap:9px;margin:22px 0 18px}
   html.portrait .tp-sym{width:113px;height:113px;border-radius:14px}
   html.portrait .tp-sym.erase{font-size:22px}
-  html.portrait .tp-pre{gap:10px;margin-bottom:22px}
+  html.portrait .tp-pre{gap:10px;margin-bottom:18px}
   html.portrait #tpPanel .tp-pre button{height:64px;font-size:25px;padding:0 16px}
   html.portrait .tp-foot{flex-wrap:wrap;gap:12px}
   html.portrait .tp-foot .sp{display:none}
@@ -3519,7 +3966,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   const grid = el('div', 'tp-grid');
   const cells = [];
   for (let y = 0; y < 3; y++) for (let r = 0; r < 5; r++) {
-    const c = tap(el('div', 'tp-cell' + (r === 2 ? ' r2' : '')), () => { G[r][y] = brush === ERASE ? null : brush; layoutName = null; draw(); });
+    const c = tap(el('div', 'tp-cell' + (r === 2 ? ' r2' : '')), () => { G[r][y] = brush === ERASE ? null : brush; layoutName = null; layoutSeed = null; draw(); });
     c.title = `reel ${r + 1}, row ${y + 1}`;
     cells.push({ c, r, y });
     grid.appendChild(c);
@@ -3529,7 +3976,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   const seg = el('div', 'tp-seg');
   const segBtns = {};
   [['natural', 'Natural'], ['force', 'Force'], ['never', 'Never']].forEach(([k, t]) => {
-    segBtns[k] = tap(el('button', '', t), () => { copyMode = k; draw(); });
+    segBtns[k] = tap(el('button', '', t), () => { if (copyMode !== k) layoutSeed = null; copyMode = k; draw(); });   // a new copy mode = a new layout
     seg.appendChild(segBtns[k]);
   });
   const chk = tap(el('div', 'tp-chk'), () => { reopen = !reopen; draw(); });
@@ -3541,7 +3988,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
   const saved = el('div', 'tp-saved');
   const warn = el('div', 'tp-warn');               // v14: a layout the game could not land naturally
   side.append(el('h5', '', 'COPY RESPIN'), seg,
-    el('div', 'tp-note', 'Only when both boards miss. Natural = the game\'s 1 in 32 roll.'),
+    el('div', 'tp-note', `Only when both boards miss and fewer than 3 scatters show. Natural = the game's 1 in ${(1 / (SP.COPY_P || 1)).toFixed(1)} roll.`),
     chk, recChk, warn, el('h5', '', 'MY LAYOUTS'), saved);
 
   const main = el('div', 'tp-main');
@@ -3560,13 +4007,13 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
 
   const pre = el('div', 'tp-pre');
   PRESETS.forEach((p) => pre.appendChild(tap(el('button', '', p.name), () => {
-    G = p.grid.map((c) => c.slice()); copyMode = p.copy; layoutName = p.name; draw();
+    G = p.grid.map((c) => c.slice()); copyMode = p.copy; layoutName = p.name; layoutSeed = p.seed == null ? null : p.seed; draw();
   })));
 
   const foot = el('div', 'tp-foot');
   foot.append(
-    tap(el('button', '', 'Clear'), () => { G = empty(); layoutName = null; draw(); }),
-    tap(el('button', '', 'Fill empty randomly'), () => { G = G.map((c) => c.map((s) => s || rnd())); draw(); }),
+    tap(el('button', '', 'Clear'), () => { G = empty(); layoutName = null; layoutSeed = null; draw(); }),
+    tap(el('button', '', 'Fill empty randomly'), () => { G = G.map((c) => c.map((s) => s || rnd())); layoutSeed = null; draw(); }),
     tap(el('button', '', 'Save layout'), save),
     el('div', 'sp'),
     tap(el('button', 'tp-go', 'SPIN THIS LAYOUT ▶'), spinLayout));
@@ -3597,6 +4044,8 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
       if (wr.indexOf(r) < 0 && c.some((x) => x === SP.WILD || x === SP.XW)) out.push(`wild on reel ${r + 1}`);
       if (c.filter((x) => x === SP.WILD).length > mx.W) out.push(`2+ wilds on reel ${r + 1}`);
       if (c.filter((x) => x === SP.SCATTER).length > mx.CROWN) out.push(`2+ scatters on reel ${r + 1}`);
+      // v16: one wild in the base game; the Expanding Wild only exists in free spins (QA only here)
+      if (c.includes(SP.XW)) out.push(`Expanding Wild on reel ${r + 1} (free spins only since v16)`);
     });
     return out.length ? "Can't land naturally (" + out.join(', ') + '); it still spins as placed.' : '';
   }
@@ -3613,7 +4062,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
     list.forEach((x, i) => {
       const row = el('div');
       row.append(
-        tap(el('button', '', x.name), () => { G = x.grid.map((c) => c.slice()); copyMode = x.copy || 'natural'; layoutName = x.name; draw(); }),
+        tap(el('button', '', x.name), () => { G = x.grid.map((c) => c.slice()); copyMode = x.copy || 'natural'; layoutName = x.name; layoutSeed = null; draw(); }),
         tap(el('button', '', '✕'), () => { const a = load(); a.splice(i, 1); store(a); draw(); }));
       saved.appendChild(row);
     });
@@ -3687,11 +4136,15 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fi
     if (!dbgWasOn) dbgShow(false);             // the log overlay only comes back on G
     pendingForce = { grid: g };                // replaces anything queued from the console
     if (copyMode !== 'natural') pendingForce.copy = copyMode === 'force';
-    dbg('test layout: ' + g.map((c) => c.join('/')).join(' | ') + ' · copy ' + copyMode + (R ? ' · recording' : ''));
+    // a seeded preset: this one spin runs on the preset's seed, so its random part (respin, free spins) plays as labelled
+    const seed = layoutSeed;
+    if (seed != null) rng = SP.makeRng(seed >>> 0);
+    dbg('test layout: ' + g.map((c) => c.join('/')).join(' | ') + ' · copy ' + copyMode + (seed != null ? ' · seed ' + seed : '') + (R ? ' · recording' : ''));
     hide();
     if (R) { document.documentElement.classList.add('tp-rec'); await sleep(450); R.rec.start(250); }
     let r;
     try { r = await playOne(true); } finally {
+      if (seed != null) rng = SP.makeRng((Date.now() ^ (Math.random() * 1e9)) >>> 0);   // the game's own random seed again
       if (R) {
         if (r === true) await sleep(1500);     // the win settles on screen
         if (R.rec.state !== 'inactive') R.rec.stop();
